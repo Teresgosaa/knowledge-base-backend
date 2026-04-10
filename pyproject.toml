@@ -1,0 +1,26 @@
+[project]
+name = "knowledge-base-backend"
+version = "0.1.0"
+description = "Knowledge Base"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.42.85",
+    "docling>=2.85.0",
+    "easyocr>=1.7.2",
+    "fastapi>=0.135.3",
+    "hvac>=2.4.0",
+    "neo4j>=6.1.0",
+    "pydantic[email]>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "python-jose>=3.5.0",
+    "raganything[all]>=1.2.10",
+    "ruff>=0.15.9",
+    "sqlalchemy>=2.0.49",
+    "ujson>=5.12.0",
+    "yandexcloud>=0.385.0",
+    "passlib>=1.7.4",
+    "asyncpg>=0.31.0",
+    "greenlet>=3.3.2",
+    "argon2-cffi>=25.1.0",
+]

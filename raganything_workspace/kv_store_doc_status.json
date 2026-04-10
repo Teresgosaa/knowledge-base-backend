@@ -1,0 +1,92 @@
+{
+  "10000478611": {
+    "status": "processed",
+    "chunks_count": 34,
+    "chunks_list": [
+      "chunk-7b4715679e5063e92762dee1d40c2ac5",
+      "chunk-3d94c19e0dbeed22e56b4869e036cc5e",
+      "chunk-a97994e49f206fbcf1c5bbb87631e2e1",
+      "chunk-151061f632c807f09c44bfde28454209",
+      "chunk-bf01a976d24435a823d93118e9be0530",
+      "chunk-18dd7fd3061d82a82ffa3602d865d940",
+      "chunk-eb87ede2cecc645fb4f7b03faa4a38e5",
+      "chunk-2f5017102f2522666a0a98754539dee7",
+      "chunk-43f0da10d54232c87e8aaf5ccea5367a",
+      "chunk-4207ccf67dd05ba7faf3403b0dbb0b17",
+      "chunk-36def1939a2d726f050ba94ec59ce09c",
+      "chunk-5e74b51ed1807d981ab31417c72888e2",
+      "chunk-ec75a2ae983a367b7ab709e579cecc2e",
+      "chunk-cc6228dea753930b76ac4f6f888b32f4",
+      "chunk-bf998ea1c1f9a13cf320c3f827d555e3",
+      "chunk-ee6697392934d601f151d18be4d5cbb5",
+      "chunk-aadc337f54a9d3321759b5b295d4dac0",
+      "chunk-a39cb8d019e74df471707ba6da6bd428",
+      "chunk-f504ec0873ba0cf7ac351094fda9144d",
+      "chunk-25c913fe677cdabd4ebbdba3f323ee4e",
+      "chunk-4440759e4cfd6e76d4a611c26e5752f4",
+      "chunk-14133086aafd43e88548756e26c7e9ae",
+      "chunk-fee431eef31d326ea8d4bafe008f54cf",
+      "chunk-d359b4f811ac15b8e1c73170ab3bca4e",
+      "chunk-1e4491feba6aa96defafc885adda6ff4",
+      "chunk-2562179844feddb9af787116757af539",
+      "chunk-c25238c164a187839d838fe893fcd1f7",
+      "chunk-ce2e4660c06b99af8194bd5258e5e60a",
+      "chunk-11c54244c2d553ce5e08eb173e8c2eb6",
+      "chunk-fb2b1ea72ed7232c43a1baa24bdcf102",
+      "chunk-9f4c44411201839c57fe384a4ee61b8a",
+      "chunk-f8bfcb3a0f5fe8f8cba5cae838104087",
+      "chunk-4ae16785bf2e8d652c3806d7764578b1",
+      "chunk-d7896536282e2e32847a1ca026a860e3"
+    ],
+    "content_summary": "г. Норильск\n\nДОГОВОР ПОДРЯДА\n\n_______________ 2023г.\n\nОбщество  с  ограниченной  ответственностью  «Медвежий  ручей»  (ООО  «Медвежий ручей») , именуемое в дальнейшем « Заказчик » , в лице Генерального директора Зайцева Владимира Игнатьевича , действ...",
+    "content_length": 72737,
+    "created_at": "2026-04-10T06:30:53.656707+00:00",
+    "updated_at": "2026-04-10T09:43:14+00:00",
+    "file_path": "10000478611_Договор подряда.pdf",
+    "track_id": "insert_20260410_093053_8634b8d2",
+    "metadata": {
+      "processing_start_time": 1775802653,
+      "processing_end_time": 1775802896
+    },
+    "multimodal_processed": true
+  },
+  "10000661612": {
+    "status": "processed",
+    "chunks_count": 5,
+    "chunks_list": [
+      "chunk-e39e21f931a4df6eb6e9fcc6aafef4f6",
+      "chunk-75cc1e2f8f3672ffa0232f6092d517b4",
+      "chunk-64f77a05f44920db570520892c798d1b",
+      "chunk-f9289da0f7143032d6daf0b8d177f8db",
+      "chunk-bec158bf83b2f150e1c194d8484e28d5"
+    ],
+    "content_summary": "ДОГОВОР ПОСТАВКИ\n\nг. Москва\n\n«____» _____________ 2025\n\nПоставщик : ООО  \"ПромКомплект\" , в лице генерального директора действующего на основании Устава, с одной стороны,\n\nА.В.\n\nСинякова,\n\nПокупатель : ПАО «ГМК «Норильский никель», в лице директора Д...",
+    "content_length": 6625,
+    "created_at": "2026-04-10T06:43:27.905254+00:00",
+    "updated_at": "2026-04-10T09:46:51+00:00",
+    "file_path": "Договор (4).pdf",
+    "track_id": "insert_20260410_094327_78ad4336",
+    "metadata": {
+      "processing_start_time": 1775803407,
+      "processing_end_time": 1775803480
+    },
+    "multimodal_processed": true
+  },
+  "dup-eac3539a420c0ff53a76d69b2e29b95e": {
+    "status": "failed",
+    "content_summary": "[DUPLICATE] Original document: 10000661612",
+    "content_length": 315,
+    "chunks_count": 0,
+    "chunks_list": [],
+    "created_at": "2026-04-10T06:46:57.855446+00:00",
+    "updated_at": "2026-04-10T06:46:57.855449+00:00",
+    "file_path": "Пояснительная записка.docx",
+    "track_id": "insert_20260410_094657_3170474d",
+    "error_msg": "Content already exists. Original doc_id: 10000661612, Status: DocStatus.PROCESSED",
+    "metadata": {
+      "is_duplicate": true,
+      "original_doc_id": "10000661612",
+      "original_track_id": "insert_20260410_094327_78ad4336"
+    }
+  }
+}

@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  app:
+    image: reconciliation-agent-backend:latest
+    pull_policy: never
+    container_name: reconciliation-agent-backend
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Application settings
+      - ENVIRONMENT=production
+      - HOST=0.0.0.0
+      - PORT=8000
+      - WORKERS_COUNT=4
+      - RELOAD=false
+      # Auth settings
+      - SECRET_KEY=${SECRET_KEY}
+      # Database settings (external PostgreSQL)
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_POSTGRES_HOST=${DB_POSTGRES_HOST}
+      - DB_POSTGRES_PORT=${DB_POSTGRES_PORT} # Fixed typo (removed space)
+      - DB_POSTGRES_USER=${DB_POSTGRES_USER}
+      - DB_POSTGRES_PASSWORD=${DB_POSTGRES_PASSWORD}
+      - DB_POSTGRES_NAME=${DB_POSTGRES_NAME}
+      # CORS settings
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      # S3 settings
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_REGION=${S3_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME} # Fixed typo (removed space)
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      # SAP settings 
+      - SAP_EMULATION=${SAP_EMULATION}
+      - SAP_URL=${SAP_URL}
+      - SAP_USERNAME=${SAP_USERNAME} # Fixed typo (removed space)
+      - SAP_PASSWORD=${SAP_PASSWORD}
+      # OpenText settings
+      - OPENTEXT_AUTHORIZATION_URL=${OPENTEXT_AUTHORIZATION_URL}
+      - OPENTEXT_DOCUMENT_MANAGEMENT_URL=${OPENTEXT_DOCUMENT_MANAGEMENT_URL} # Fixed typo
+      - OPENTEXT_USERNAME=${OPENTEXT_USERNAME}
+      - OPENTEXT_PASSWORD=${OPENTEXT_PASSWORD}
+      # Yandex Cloud AI settings
+      - AI_BASE_URL=${AI_BASE_URL}
+      - AI_YC_API_KEY=${AI_YC_API_KEY} # Fixed typo (removed space)
+      - AI_YC_FOLDER_ID=${AI_YC_FOLDER_ID}
+      - SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}
+      - YAI_STUDIO_WORKFLOW=${YAI_STUDIO_WORKFLOW}
+      - YAI_STUDIO_WORKFLOW_URL=${YAI_STUDIO_WORKFLOW_URL}
+    volumes:
+      - ./cert:/cert:ro 
+      - ./app/static:/app/static:ro
+      - ./app/templates:/app/templates:ro
+      - app_logs:/app/logs
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  app_network:
+    driver: bridge
+    name: fastapi_network
+
+volumes:
+  app_logs:
+    name: fastapi_logs

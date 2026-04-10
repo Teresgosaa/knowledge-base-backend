@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+workflow/
+
+# VSCode settings
+.vscode
+.ruff_cache
+
+# Virtual environments
+.venv
+*.tar
+
+# deploy scripts
+*.sh
+.env*
+
+# folders
+secure/
