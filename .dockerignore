@@ -75,3 +75,7 @@ Thumbs.db
 
 # 
 *.tar
+
+# temporary lightrag
+output/
+raganything_workspace/
