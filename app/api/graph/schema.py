@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
@@ -29,6 +29,10 @@ class NodeRowResponse(BaseModel):
 
 class EntityTypesResponse(BaseModel):
     entity_types: list[str]
+
+
+class EntityTypeMappingResponse(BaseModel):
+    mapping: Dict[str, str]
 
 
 class DocIdsResponse(BaseModel):

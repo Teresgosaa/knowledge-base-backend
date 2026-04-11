@@ -15,6 +15,7 @@ import numpy as np
 import openai
 import requests
 from lightrag.utils import wrap_embedding_func_with_attrs
+from neo4j import GraphDatabase
 from raganything import RAGAnything, RAGAnythingConfig
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,7 @@ from sqlalchemy.orm import selectinload
 from app.db.dependencies import get_background_db_session
 from app.db.folder import Folder
 from app.db.kb_file import KBFile
+from app.service.layered_graph.builder import LayeredGraphBuilder
 from app.settings.settings import settings
 
 RAG_WORKING_DIR: str = "./raganything_workspace"
@@ -31,58 +33,57 @@ LLM_MAX_OUTPUT_TOKENS = 3000
 MAX_CONCURRENT_FILES = 10
 
 ENTITY_TYPES: Dict[str, str] = {
-    "Вид документа": "DOKAR",
-    "Номер регистрационный": "ZZ_NUM_REG",
-    "Вид договора": "ZZ_CONTR_TYPE",
-    "Начало действия": "ZZ_BEGDA",
-    "Дата начала действия договора": "ZZ_BEGDA",
-    "Дата начала": "ZZ_BEGDA",
-    "Окончание действия": "ZZ_ENDDA",
-    "Флаг 'До полного исполнения'": "ZZ_FL_PI",
-    "Типовой договор": "ZZ_DOG_TIP",
-    "Деловой партнер": "ZZ_BU_PARTNER",
-    "поставщик": "ZZ_BU_PARTNER",
-    "подрядчик": "ZZ_BU_PARTNER",
-    "исполнитель": "ZZ_BU_PARTNER",
-    "Структурное подразделение": "ZZ_STRUK_PODR_DOG",
-    "Предмет договора": "ZZ_PREDM_DOG",
-    "Сумма договора с НДС": "ZZ_STOIM_DOG",
-    "Сумма договора без НДС": "ZZ_STOIMNET_DOG",
-    "Ставка НДС": "ZZ_VAT_RATE",
-    "Сумма НДС": "ZZ_NDS_DOG",
-    "Форма оплаты": "ZZ_PMNT_METH",
-    "Валюта договора": "ZZ_CONTR_CURR",
-    "ID РК КАСУД": "ZZ_GLOBID",
-    "Условия оплаты для платежей по факту": "ZZ_ZTERM",
-    "БЕ": "ZZ_BUKRS",
-    "Заказчик": "ZZ_BUKRS",
-    "Покупатель": "ZZ_BUKRS",
-    "Проект": "ZZ_INVEST_PROJ",
-    "Код инвестиционного проекта": "ZZ_INVEST_PROJ",
-    "Рамочный договор": "ZZ_FRAMEDOG",
-    "Условия оплаты аванса": "ZZ_ZTERM_AVANS",
-    "Плательщик": "ZZ_PLATEL_DOG",
-    "получатель": "ZZ_PLATEL_DOG",
-    "Статья Бюджета": "ZZ_COST_ITEM",
-    "Договор составлен по типовой/нетиповой форме": "ZZ_DOG_TIP",
-    "Договор расхода": "ZZ_VID_DR",
-    "Договор дохода": "ZZ_VID_DD",
-    "Номер проекта SAP": "ZZ_NUM_PROJECT",
-    "Наименование участника-победителя": "ZZ_BU_PARTNER",
-    "Номер лота": "NOMER_LOTA",
-    "Победитель по лоту": "ISWINNER",
-    "Наименование материала": "MATNR_NAME",
-    "Товар": "MATNR_NAME",
-    "Артикул": "MATNR_NAME",
-    "Позиция": "EBELP",
-    "Код ЕНС": "MATNR",
-    "Материал": "MATNR",
-    "Единица измерения": "MEINS",
-    "Количество": "MENGE",
-    "Объём": "MENGE",
-    "Стоимость": "NETWR",
-    "Цена": "PREIS",
-    "Период поставки": "LFDAT",
+    "Вид документа": "DocumentType",
+    "Номер регистрационный": "RegistrationNumber",
+    "Вид договора": "ContractType",
+    "Начало действия": "StartDate",
+    "Дата начала": "StartDate",
+    "Окончание действия": "EndDate",
+    "Флаг До полного исполнения": "UntilFullPerformance'",
+    "Типовой договор": "StandardContract",
+    "Деловой партнер": "BusinessPartner",
+    "Поставщик": "Supplier",
+    "Подрядчик": "Contractor",
+    "Исполнитель": "PerformerExecutor",
+    "Структурное подразделение": "StructureUnit",
+    "Предмет договора": "Subject",
+    "Сумма договора с НДС": "AmountWithVAT",
+    "Сумма договора без НДС": "AmountWithoutVAT",
+    "Ставка НДС": "VATRate",
+    "Сумма НДС": "VATAmount",
+    "Форма оплаты": "PaymentForm",
+    "Валюта договора": "ContractCurrency",
+    "ID РК КАСУД": "KASUDID",
+    "Условия оплаты": "PaymentTerms",
+    "БЕ": "BusinessUnit",
+    "Заказчик": "CustomerClient",
+    "Покупатель": "Buyer",
+    "Проект": "Project",
+    "Код инвестиционного проекта": "InvestmentProjectCode",
+    "Рамочный договор": "FrameContract",
+    "Условия оплаты аванса": "PaymentTerms",
+    "Плательщик": "Payer",
+    "Получатель": "Recipient",
+    "Статья Бюджета": "BudgetItem",
+    "Договор составлен по типовой/нетиповой форме": "StandardNonStandard",
+    "Договор расхода": "ExpenseContract",
+    "Договор дохода": "RevenueContract",
+    "Номер проекта SAP": "SAPProject",
+    "Наименование участника-победителя": "WinParticipant",
+    "Номер лота": "LotNumber",
+    "Победитель по лоту": "LotWinner",
+    "Наименование материала": "MaterialName",
+    "Товар": "GoodsProduct",
+    "Артикул": "SKUArticle number",
+    "Позиция": "PositionItem",
+    "Код ЕНС": "ENSCode",
+    "Материал": "Material",
+    "Единица измерения": "UnitOfMeasurement",
+    "Количество": "Quantity",
+    "Объём": "Volume",
+    "Стоимость": "Cost",
+    "Цена": "Price",
+    "Период поставки": "DeliveryPeriod",
 }
 
 logging.basicConfig(
@@ -208,6 +209,7 @@ async def _set_doc_id_on_nodes(rag, file_name: str, doc_id: str) -> int:
 class RAGAnythingService:
     def __init__(self):
         self._tasks: Dict[str, Dict[str, Any]] = {}
+        self._layered_graph_builder = LayeredGraphBuilder()
 
     async def _fetch_iam_token(self) -> str:
         resp = requests.post(
@@ -390,7 +392,15 @@ class RAGAnythingService:
             enable_table_processing=True,
             enable_equation_processing=False,
             use_full_path=False,
-            supported_file_extensions=[".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"],
+            supported_file_extensions=[
+                ".pdf",
+                ".doc",
+                ".docx",
+                ".ppt",
+                ".pptx",
+                ".xls",
+                ".xlsx",
+            ],
             max_concurrent_files=MAX_CONCURRENT_FILES,
         )
 
@@ -467,6 +477,96 @@ class RAGAnythingService:
 
         return results
 
+    async def _build_layered_graphs(
+        self,
+        agreements: Dict[str, List[Path]],
+        llm_func: Callable,
+    ) -> Dict[str, Any]:
+        layered_results: Dict[str, Any] = {}
+
+        for agreement_id, file_paths in agreements.items():
+            logger.info(
+                "=== Building layered graph for agreement '%s' (%d files) ===",
+                agreement_id,
+                len(file_paths),
+            )
+            agreement_layered: Dict[str, Any] = {
+                "agreement_id": agreement_id,
+                "files": [],
+            }
+
+            for file_path in file_paths:
+                try:
+                    doc_text = self._layered_graph_builder.get_document_text(
+                        agreement_id, PARSER_OUTPUT_DIR, file_path=str(file_path)
+                    )
+                    if not doc_text:
+                        if file_path.suffix.lower() in (
+                            ".pdf",
+                            ".doc",
+                            ".docx",
+                            ".ppt",
+                            ".pptx",
+                            ".xls",
+                            ".xlsx",
+                        ):
+                            logger.warning(
+                                "No parsed text found for %s (doc_id=%s), skipping raw binary read",
+                                file_path.name,
+                                agreement_id,
+                            )
+                            doc_text = ""
+                        else:
+                            doc_text = file_path.read_text(encoding="utf-8", errors="replace")
+
+                    stats = await self._layered_graph_builder.build_graph_for_document(
+                        doc_id=agreement_id,
+                        filename=file_path.name,
+                        text=doc_text,
+                        llm_func=llm_func,
+                    )
+                    agreement_layered["files"].append(
+                        {"file": file_path.name, "status": "success", "stats": stats}
+                    )
+                    logger.info("  Layered graph built for %s: %s", file_path.name, stats)
+                except Exception as exc:
+                    logger.error("  Layered graph failed for %s: %s", file_path.name, exc)
+                    agreement_layered["files"].append(
+                        {"file": file_path.name, "status": "error", "error": str(exc)}
+                    )
+
+            layered_results[agreement_id] = agreement_layered
+        logger.info(
+            "Layered graph built Finished",
+        )
+        return layered_results
+
+    def _cleanup_unrecognized_entities(self) -> int:
+        allowed = [entity.lower().replace(" ", "") for entity in ENTITY_TYPES.keys()]
+        driver = GraphDatabase.driver(
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
+        )
+        try:
+            with driver.session() as session:
+                result = session.run(
+                    """
+                    MATCH (n)
+                    WHERE n.entity_type IS NOT NULL
+                      AND NOT 'Layered' IN labels(n)
+                      AND NOT n.entity_type IN $allowed_types
+                    DETACH DELETE n
+                    RETURN count(n) AS deleted
+                    """,
+                    allowed_types=allowed,
+                )
+                record = result.single()
+                deleted = record["deleted"] if record else 0
+            logger.info("Cleaned up %d nodes with unrecognized entity types", deleted)
+            return deleted
+        finally:
+            driver.close()
+
     async def _process(self, task_id: str, folder_id: int) -> None:
         task = self._tasks[task_id]
         try:
@@ -509,10 +609,17 @@ class RAGAnythingService:
                     await rag.finalize_storages()
                     raise
 
+                # self._cleanup_unrecognized_entities()
+
+                task["status"] = "building_layered_graph"
+                llm_func = self._make_llm_func()
+                layered_results = await self._build_layered_graphs(local_agreements, llm_func)
+
                 task["status"] = "completed"
                 task["result"] = {
                     "status": "success",
                     "agreements": processing_results,
+                    "layered_graph": layered_results,
                     "summary": {
                         "total_agreements": len(local_agreements),
                         "total_files": sum(len(v) for v in local_agreements.values()),

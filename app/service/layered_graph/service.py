@@ -1,0 +1,446 @@
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, List, Optional
+
+from neo4j import GraphDatabase
+from neo4j.time import DateTime as Neo4jDateTime
+
+from app.service.layered_graph.model import (
+    LAYER_DEFINITIONS,
+    NODE_DEFINITIONS,
+    NodeType,
+)
+from app.settings.settings import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _sanitize_properties(props: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: str(v) if isinstance(v, Neo4jDateTime) else v for k, v in props.items()}
+
+
+_LAYER_QUERIES = {
+    "document": "MATCH (n:Document:Layered) WHERE ($doc_id IS NULL OR n.doc_id = $doc_id)",
+    "document_version": "MATCH (n:DocumentVersion:Layered) WHERE ($doc_id IS NULL OR n.doc_id = $doc_id)",
+    "clause": "MATCH (n) WHERE ('Clause' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
+    "text_unit": "MATCH (n) WHERE ('TextUnit' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
+    "entity": (
+        "MATCH (n) WHERE ("
+        "  ('Entity' IN labels(n) AND 'Layered' IN labels(n))"
+        "  OR (n.entity_type IS NOT NULL AND 'Layered' IN labels(n) AND NOT 'Document' IN labels(n) AND NOT 'DocumentVersion' IN labels(n))"
+        ") AND ($doc_id IS NULL OR n.doc_id = $doc_id)"
+    ),
+    "term": "MATCH (n) WHERE ('Term' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
+    "obligation": "MATCH (n) WHERE ('Obligation' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
+    "compliance_rule": "MATCH (n) WHERE ('ComplianceRule' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
+    "finding": "MATCH (n) WHERE ('Finding' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
+    "business_object": "MATCH (n) WHERE ('BusinessObject' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
+}
+
+
+def _build_layer_match(layer: str) -> Optional[str]:
+    layer_node_types = []
+    for ld in LAYER_DEFINITIONS:
+        if ld.layer_type.value == layer:
+            layer_node_types = ld.node_types
+            break
+    if not layer_node_types:
+        return None
+
+    label_checks = " OR ".join(f"'{nt.value}' IN labels(n)" for nt in layer_node_types)
+    etype_checks = " OR ".join(
+        f"n.entity_type = '{nt.value}'" for nt in layer_node_types
+    )
+    return f"MATCH (n:Layered) WHERE ({label_checks} OR ({etype_checks}))"
+
+
+class LayeredGraphService:
+    def __init__(self):
+        self._driver = None
+
+    def _get_driver(self):
+        if self._driver is None:
+            self._driver = GraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password),
+            )
+        return self._driver
+
+    def close(self):
+        if self._driver is not None:
+            self._driver.close()
+            self._driver = None
+
+    def get_layers(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "name": ld.name,
+                "layer_type": ld.layer_type.value,
+                "description": ld.description,
+                "node_types": [nt.value for nt in ld.node_types],
+            }
+            for ld in LAYER_DEFINITIONS
+        ]
+
+    def get_node_types(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "node_type": nd.node_type.value,
+                "label": nd.label,
+                "layer": nd.layer.value,
+                "description": nd.description,
+                "properties": [
+                    {
+                        "name": p.name,
+                        "type": p.type,
+                        "required": p.required,
+                        "description": p.description,
+                    }
+                    for p in nd.properties
+                ],
+                "subtypes": nd.subtypes,
+            }
+            for nd in NODE_DEFINITIONS
+        ]
+
+    def get_relationship_types(self) -> List[Dict[str, Any]]:
+        from app.service.layered_graph.model import RELATIONSHIP_DEFINITIONS
+
+        return [
+            {
+                "rel_type": rd.rel_type.value,
+                "source_types": [st.value for st in rd.source_types],
+                "target_types": [tt.value for tt in rd.target_types],
+                "description": rd.description,
+                "properties": [
+                    {"name": p.name, "type": p.type, "description": p.description}
+                    for p in rd.properties
+                ],
+            }
+            for rd in RELATIONSHIP_DEFINITIONS
+        ]
+
+    def get_layer_nodes(
+        self,
+        layer: str,
+        doc_id: Optional[str] = None,
+        node_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        driver = self._get_driver()
+        base_query = _build_layer_match(layer)
+        if not base_query:
+            return []
+
+        conditions = ["($doc_id IS NULL OR n.doc_id = $doc_id)"]
+        params: Dict[str, Any] = {"doc_id": doc_id, "skip": offset, "limit": limit}
+
+        if node_type:
+            conditions.append(
+                f"('{node_type}' IN labels(n) OR n.entity_type = '{node_type}')"
+            )
+
+        where_clause = " AND " + " AND ".join(conditions)
+
+        query = (
+            base_query
+            + where_clause
+            + " RETURN DISTINCT n, labels(n) AS node_labels, elementId(n) AS elem_id"
+            + " SKIP $skip LIMIT $limit"
+        )
+
+        with driver.session() as session:
+            result = session.run(query, params)
+            nodes = []
+            seen = set()
+            for record in result:
+                elem_id = record["elem_id"]
+                if elem_id in seen:
+                    continue
+                seen.add(elem_id)
+                node_data = _sanitize_properties(dict(record["n"]))
+                node_labels = [
+                    lbl
+                    for lbl in record["node_labels"]
+                    if lbl not in ("Layered", "base")
+                ]
+                if not node_labels:
+                    et = node_data.get("entity_type", "")
+                    if et:
+                        node_labels = [et]
+                nodes.append(
+                    {
+                        "id": elem_id,
+                        "uid": node_data.get("uid", ""),
+                        "labels": node_labels,
+                        "properties": node_data,
+                    }
+                )
+            return nodes
+
+    def get_layer_edges(
+        self,
+        layer: str,
+        doc_id: Optional[str] = None,
+        limit: int = 200,
+    ) -> List[Dict[str, Any]]:
+        driver = self._get_driver()
+
+        layer_node_types = self._get_layer_node_types(layer)
+        if not layer_node_types:
+            return []
+
+        label_checks = " OR ".join(
+            f"'{nt.value}' IN labels(n)" for nt in layer_node_types
+        )
+        etype_checks = " OR ".join(
+            f"n.entity_type = '{nt.value}'" for nt in layer_node_types
+        )
+
+        query = f"""
+        MATCH (n)
+        WHERE ('Layered' IN labels(n))
+          AND ({label_checks} OR ({etype_checks}))
+          AND ($doc_id IS NULL OR n.doc_id = $doc_id)
+        WITH collect(elementId(n)) AS node_ids
+        MATCH (a)-[r]->(b)
+        WHERE elementId(a) IN node_ids AND elementId(b) IN node_ids
+        RETURN elementId(a) AS source_id, elementId(b) AS target_id,
+               type(r) AS rel_type, properties(r) AS rel_props
+        LIMIT $limit
+        """
+        params = {"doc_id": doc_id, "limit": limit}
+
+        with driver.session() as session:
+            result = session.run(query, params)
+            edges = []
+            for record in result:
+                edges.append(
+                    {
+                        "source": record["source_id"],
+                        "target": record["target_id"],
+                        "type": record["rel_type"],
+                        "properties": _sanitize_properties(dict(record["rel_props"]))
+                        if record["rel_props"]
+                        else {},
+                    }
+                )
+            return edges
+
+    def get_layer_graph(
+        self,
+        layer: str,
+        doc_id: Optional[str] = None,
+        node_type: Optional[str] = None,
+        limit: int = 200,
+    ) -> Dict[str, Any]:
+        nodes = self.get_layer_nodes(layer, doc_id, node_type, limit)
+        if not nodes:
+            return {"nodes": [], "edges": []}
+
+        node_ids = [n["id"] for n in nodes]
+
+        driver = self._get_driver()
+
+        edge_query = """
+        MATCH (a)-[r]->(b)
+        WHERE elementId(a) IN $node_ids AND elementId(b) IN $node_ids
+        RETURN elementId(a) AS source_id, elementId(b) AS target_id,
+               type(r) AS rel_type, properties(r) AS rel_props
+        """
+        params = {"node_ids": node_ids}
+
+        with driver.session() as session:
+            result = session.run(edge_query, params)
+            edges = []
+            for record in result:
+                edges.append(
+                    {
+                        "source": record["source_id"],
+                        "target": record["target_id"],
+                        "type": record["rel_type"],
+                        "properties": _sanitize_properties(dict(record["rel_props"]))
+                        if record["rel_props"]
+                        else {},
+                    }
+                )
+
+        return {"nodes": nodes, "edges": edges}
+
+    def get_document_overview(self, doc_id: str) -> Dict[str, Any]:
+        driver = self._get_driver()
+
+        with driver.session() as session:
+            doc_result = session.run(
+                "MATCH (d:Document:Layered) WHERE d.doc_id = $doc_id "
+                "RETURN d, labels(d) AS labels, elementId(d) AS elem_id",
+                doc_id=doc_id,
+            )
+            doc_records = list(doc_result)
+            if not doc_records:
+                return {}
+
+            doc_data = _sanitize_properties(dict(doc_records[0]["d"]))
+            doc_elem_id = doc_records[0]["elem_id"]
+
+            clause_count_result = session.run(
+                "MATCH (:DocumentVersion:Layered)-[:HAS_CLAUSE]->(c:Clause:Layered) "
+                "WHERE c.doc_id = $doc_id RETURN count(c) AS cnt",
+                doc_id=doc_id,
+            )
+            clause_count = (
+                clause_count_result.single()["cnt"] if clause_count_result.peek() else 0
+            )
+
+            entity_count_result = session.run(
+                "MATCH (e) WHERE 'Layered' IN labels(e) AND e.entity_type IS NOT NULL "
+                "AND NOT 'Document' IN labels(e) AND NOT 'DocumentVersion' IN labels(e) "
+                "AND NOT 'Clause' IN labels(e) AND NOT 'TextUnit' IN labels(e) "
+                "AND e.doc_id = $doc_id RETURN count(e) AS cnt",
+                doc_id=doc_id,
+            )
+            entity_count = (
+                entity_count_result.single()["cnt"] if entity_count_result.peek() else 0
+            )
+
+            term_count_result = session.run(
+                "MATCH (t:Term:Layered) WHERE t.doc_id = $doc_id RETURN count(t) AS cnt",
+                doc_id=doc_id,
+            )
+            term_count = (
+                term_count_result.single()["cnt"] if term_count_result.peek() else 0
+            )
+
+            obl_count_result = session.run(
+                "MATCH (o:Obligation:Layered) WHERE o.doc_id = $doc_id RETURN count(o) AS cnt",
+                doc_id=doc_id,
+            )
+            obl_count = (
+                obl_count_result.single()["cnt"] if obl_count_result.peek() else 0
+            )
+
+            finding_count_result = session.run(
+                "MATCH (f:Finding:Layered) WHERE f.doc_id = $doc_id RETURN count(f) AS cnt",
+                doc_id=doc_id,
+            )
+            finding_count = (
+                finding_count_result.single()["cnt"]
+                if finding_count_result.peek()
+                else 0
+            )
+
+            parties_result = session.run(
+                "MATCH (o) WHERE 'Layered' IN labels(o) AND ('Organization' IN labels(o) "
+                "OR o.entity_type = 'Organization') "
+                "WITH o MATCH (o)-[:PLAYS_ROLE_IN]->(d:Document:Layered) "
+                "WHERE d.doc_id = $doc_id "
+                "RETURN o.name AS name, o.role AS role",
+                doc_id=doc_id,
+            )
+            parties = [{"name": r["name"], "role": r["role"]} for r in parties_result]
+
+            return {
+                "id": doc_elem_id,
+                "uid": doc_data.get("uid", ""),
+                "doc_id": doc_id,
+                "title": doc_data.get("title", ""),
+                "doc_subtype": doc_data.get("doc_subtype", ""),
+                "original_filename": doc_data.get("original_filename", ""),
+                "language": doc_data.get("language", "ru"),
+                "parties": parties,
+                "stats": {
+                    "clauses": clause_count,
+                    "entities": entity_count,
+                    "terms": term_count,
+                    "obligations": obl_count,
+                    "findings": finding_count,
+                },
+            }
+
+    def search_nodes(
+        self,
+        query: str,
+        doc_id: Optional[str] = None,
+        node_type: Optional[str] = None,
+        layer: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        driver = self._get_driver()
+
+        cypher = "MATCH (n) WHERE 'Layered' IN labels(n)"
+        params: Dict[str, Any] = {"query": query, "limit": limit}
+
+        if doc_id:
+            cypher += " AND n.doc_id = $doc_id"
+            params["doc_id"] = doc_id
+
+        if node_type:
+            cypher += " AND ($node_type IN labels(n) OR n.entity_type = $node_type)"
+            params["node_type"] = node_type
+
+        if layer:
+            layer_types = self._get_layer_node_types(layer)
+            if layer_types:
+                label_checks = " OR ".join(
+                    f"'{nt.value}' IN labels(n)" for nt in layer_types
+                )
+                etype_checks = " OR ".join(
+                    f"n.entity_type = '{nt.value}'" for nt in layer_types
+                )
+                cypher += f" AND ({label_checks} OR ({etype_checks}))"
+
+        cypher += (
+            " AND (n.name CONTAINS $query OR n.full_text CONTAINS $query "
+            "OR n.text CONTAINS $query OR n.description CONTAINS $query "
+            "OR n.entity_id CONTAINS $query)"
+        )
+
+        cypher += (
+            " RETURN DISTINCT n, labels(n) AS node_labels, elementId(n) AS elem_id"
+            " SKIP 0 LIMIT $limit"
+        )
+
+        with driver.session() as session:
+            result = session.run(cypher, params)
+            nodes = []
+            seen = set()
+            for record in result:
+                elem_id = record["elem_id"]
+                if elem_id in seen:
+                    continue
+                seen.add(elem_id)
+                node_data = _sanitize_properties(dict(record["n"]))
+                node_labels = [
+                    lbl
+                    for lbl in record["node_labels"]
+                    if lbl not in ("Layered", "base")
+                ]
+                if not node_labels:
+                    et = node_data.get("entity_type", "")
+                    if et:
+                        node_labels = [et]
+                nodes.append(
+                    {
+                        "id": elem_id,
+                        "uid": node_data.get("uid", ""),
+                        "labels": node_labels,
+                        "properties": node_data,
+                    }
+                )
+            return nodes
+
+    def get_document_doc_ids(self) -> List[str]:
+        driver = self._get_driver()
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (d:Document:Layered) RETURN DISTINCT d.doc_id AS doc_id ORDER BY d.doc_id"
+            )
+            return [r["doc_id"] for r in result]
+
+    def _get_layer_node_types(self, layer: str) -> List[NodeType]:
+        for ld in LAYER_DEFINITIONS:
+            if ld.layer_type.value == layer:
+                return ld.node_types
+        return []

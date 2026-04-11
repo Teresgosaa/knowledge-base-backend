@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.graph.schema import (
     DocIdsResponse,
+    EntityTypeMappingResponse,
     EntityTypesResponse,
     GraphDataResponse,
     GraphEdge,
@@ -21,8 +22,18 @@ router = APIRouter(prefix="/graph", tags=["graph"])
 async def get_entity_types(
     current_user: Annotated[User, Depends(get_current_active_user)],
 ):
-    entity_types = neo4j_service.get_entity_types()
-    return EntityTypesResponse(entity_types=entity_types)
+    from app.service.rag_anything import ENTITY_TYPES
+
+    return EntityTypesResponse(entity_types=list(ENTITY_TYPES.keys()))
+
+
+@router.get("/entity-type-mapping", response_model=EntityTypeMappingResponse)
+async def get_entity_type_mapping(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    from app.service.rag_anything import ENTITY_TYPES
+
+    return EntityTypeMappingResponse(mapping=ENTITY_TYPES)
 
 
 @router.get("/doc-ids", response_model=DocIdsResponse)
