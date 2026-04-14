@@ -25,66 +25,13 @@ from app.db.dependencies import get_background_db_session
 from app.db.folder import Folder
 from app.db.kb_file import KBFile
 from app.service.layered_graph.builder import LayeredGraphBuilder
+from app.service.node_config import get_entity_type_keys
 from app.settings.settings import settings
 
 RAG_WORKING_DIR: str = "./raganything_workspace"
 PARSER_OUTPUT_DIR: str = "./output"
 LLM_MAX_OUTPUT_TOKENS = 3000
 MAX_CONCURRENT_FILES = 10
-
-ENTITY_TYPES: Dict[str, str] = {
-    "Вид документа": "DocumentType",
-    "Номер регистрационный": "RegistrationNumber",
-    "Вид договора": "ContractType",
-    "Начало действия": "StartDate",
-    "Дата начала": "StartDate",
-    "Окончание действия": "EndDate",
-    "Флаг До полного исполнения": "UntilFullPerformance'",
-    "Типовой договор": "StandardContract",
-    "Деловой партнер": "BusinessPartner",
-    "Поставщик": "Supplier",
-    "Подрядчик": "Contractor",
-    "Исполнитель": "PerformerExecutor",
-    "Структурное подразделение": "StructureUnit",
-    "Предмет договора": "Subject",
-    "Сумма договора с НДС": "AmountWithVAT",
-    "Сумма договора без НДС": "AmountWithoutVAT",
-    "Ставка НДС": "VATRate",
-    "Сумма НДС": "VATAmount",
-    "Форма оплаты": "PaymentForm",
-    "Валюта договора": "ContractCurrency",
-    "ID РК КАСУД": "KASUDID",
-    "Условия оплаты": "PaymentTerms",
-    "БЕ": "BusinessUnit",
-    "Заказчик": "CustomerClient",
-    "Покупатель": "Buyer",
-    "Проект": "Project",
-    "Код инвестиционного проекта": "InvestmentProjectCode",
-    "Рамочный договор": "FrameContract",
-    "Условия оплаты аванса": "PaymentTerms",
-    "Плательщик": "Payer",
-    "Получатель": "Recipient",
-    "Статья Бюджета": "BudgetItem",
-    "Договор составлен по типовой/нетиповой форме": "StandardNonStandard",
-    "Договор расхода": "ExpenseContract",
-    "Договор дохода": "RevenueContract",
-    "Номер проекта SAP": "SAPProject",
-    "Наименование участника-победителя": "WinParticipant",
-    "Номер лота": "LotNumber",
-    "Победитель по лоту": "LotWinner",
-    "Наименование материала": "MaterialName",
-    "Товар": "GoodsProduct",
-    "Артикул": "SKUArticle number",
-    "Позиция": "PositionItem",
-    "Код ЕНС": "ENSCode",
-    "Материал": "Material",
-    "Единица измерения": "UnitOfMeasurement",
-    "Количество": "Quantity",
-    "Объём": "Volume",
-    "Стоимость": "Cost",
-    "Цена": "Price",
-    "Период поставки": "DeliveryPeriod",
-}
 
 logging.basicConfig(
     level=logging.INFO,
@@ -417,7 +364,7 @@ class RAGAnythingService:
                 "chunk_overlap_token_size": 20,
                 "addon_params": {
                     "language": "Russian",
-                    "entity_types": list(ENTITY_TYPES.keys()),
+                    "entity_types": get_entity_type_keys(),
                 },
             },
         )
@@ -542,7 +489,7 @@ class RAGAnythingService:
         return layered_results
 
     def _cleanup_unrecognized_entities(self) -> int:
-        allowed = [entity.lower().replace(" ", "") for entity in ENTITY_TYPES.keys()]
+        allowed = [entity.lower().replace(" ", "") for entity in get_entity_type_keys()]
         driver = GraphDatabase.driver(
             settings.neo4j_uri,
             auth=(settings.neo4j_user, settings.neo4j_password),

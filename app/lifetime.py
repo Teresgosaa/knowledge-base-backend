@@ -77,6 +77,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await _create_tables()
     app.middleware_stack = app.build_middleware_stack()
 
+    from app.service.node_config import refresh_cache
+    await refresh_cache()
+
     yield  # Application runs here
 
     # Shutdown

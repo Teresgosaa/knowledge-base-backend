@@ -9,11 +9,8 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 from neo4j import GraphDatabase
 
-from app.service.layered_graph.model import (
-    NodeType,
-    SEMANTIC_NODE_TYPES,
-    RUSSIAN_NAME_TO_NODE_TYPE,
-)
+from app.service.layered_graph.model import NodeType
+from app.service.node_config import get_russian_to_graph_db_map
 from app.settings.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -27,7 +24,14 @@ def _normalize_russian_name(name: str) -> str:
 
 def _get_node_type_by_russian_name(russian_name: str) -> Optional[NodeType]:
     normalized = _normalize_russian_name(russian_name)
-    return RUSSIAN_NAME_TO_NODE_TYPE.get(normalized)
+    mapping = get_russian_to_graph_db_map()
+    graph_db_name = mapping.get(normalized)
+    if graph_db_name is None:
+        return None
+    try:
+        return NodeType(graph_db_name)
+    except ValueError:
+        return None
 
 
 def _generate_uid(*parts: str) -> str:
@@ -174,17 +178,13 @@ class LayeredGraphBuilder:
                     "LLM extraction returned no clauses for doc_id=%s, building from raw text",
                     doc_id,
                 )
-                stats = self._build_basic_clauses(
-                    driver, doc_id, doc_uid, version_uid, text, stats
-                )
+                stats = self._build_basic_clauses(driver, doc_id, doc_uid, version_uid, text, stats)
         else:
             logger.warning(
                 "LLM extraction returned no data for doc_id=%s, building from raw text",
                 doc_id,
             )
-            stats = self._build_basic_clauses(
-                driver, doc_id, doc_uid, version_uid, text, stats
-            )
+            stats = self._build_basic_clauses(driver, doc_id, doc_uid, version_uid, text, stats)
 
         with driver.session() as session:
             session.run(
@@ -226,18 +226,16 @@ class LayeredGraphBuilder:
             for record in records:
                 node_data = dict(record["n"])
                 raw_entity_type = node_data.get("entity_type", "")
-                
+
                 node_type = _get_node_type_by_russian_name(raw_entity_type)
-                
+
                 if node_type is None:
                     continue
 
                 new_labels = ["Layered", node_type.value]
 
                 entity_name = node_data.get("entity_id", node_data.get("name", ""))
-                uid = node_data.get(
-                    "uid", _generate_uid("promoted", doc_id, str(record["elem_id"]))
-                )
+                uid = node_data.get("uid", _generate_uid("promoted", doc_id, str(record["elem_id"])))
 
                 normalized_label = _normalize_russian_name(raw_entity_type)
 
@@ -294,58 +292,16 @@ class LayeredGraphBuilder:
         return promoted
 
     def _get_value_property_for_node_type(self, node_type: NodeType) -> str:
-        value_properties = {
-            NodeType.DOCUMENT_TYPE: "value",
-            NodeType.REGISTRATION_NUMBER: "number",
-            NodeType.CONTRACT_TYPE: "type",
-            NodeType.START_DATE: "date_value",
-            NodeType.END_DATE: "date_value",
-            NodeType.UNTIL_FULL_PERFORMANCE: "is_until_full_performance",
-            NodeType.STANDARD_CONTRACT: "is_standard",
-            NodeType.BUSINESS_PARTNER: "name",
-            NodeType.SUPPLIER: "name",
-            NodeType.CONTRACTOR: "name",
-            NodeType.PERFORMER_EXECUTOR: "name",
-            NodeType.STRUCTURE_UNIT: "name",
-            NodeType.SUBJECT: "description",
-            NodeType.AMOUNT_WITH_VAT: "value",
-            NodeType.AMOUNT_WITHOUT_VAT: "value",
-            NodeType.VAT_RATE: "rate",
-            NodeType.VAT_AMOUNT: "value",
-            NodeType.PAYMENT_FORM: "form",
-            NodeType.CONTRACT_CURRENCY: "code",
-            NodeType.KASUD_ID: "kasud_id",
-            NodeType.PAYMENT_TERMS: "description",
-            NodeType.BUSINESS_UNIT: "name",
-            NodeType.CUSTOMER_CLIENT: "name",
-            NodeType.BUYER: "name",
-            NodeType.PROJECT: "name",
-            NodeType.INVESTMENT_PROJECT_CODE: "code",
-            NodeType.FRAME_CONTRACT: "is_frame",
-            NodeType.PAYER: "name",
-            NodeType.RECIPIENT: "name",
-            NodeType.BUDGET_ITEM: "name",
-            NodeType.STANDARD_NON_STANDARD: "is_standard",
-            NodeType.EXPENSE_CONTRACT: "is_expense",
-            NodeType.REVENUE_CONTRACT: "is_revenue",
-            NodeType.SAP_PROJECT: "sap_id",
-            NodeType.WIN_PARTICIPANT: "name",
-            NodeType.LOT_NUMBER: "number",
-            NodeType.LOT_WINNER: "name",
-            NodeType.MATERIAL_NAME: "name",
-            NodeType.GOODS_PRODUCT: "name",
-            NodeType.SKU_ARTICLE_NUMBER: "sku",
-            NodeType.POSITION_ITEM: "position_number",
-            NodeType.ENS_CODE: "code",
-            NodeType.MATERIAL: "name",
-            NodeType.UNIT_OF_MEASUREMENT: "unit",
-            NodeType.QUANTITY: "value",
-            NodeType.VOLUME: "value",
-            NodeType.COST: "value",
-            NodeType.PRICE: "value",
-            NodeType.DELIVERY_PERIOD: "description",
-        }
-        return value_properties.get(node_type, "value")
+        from app.service.node_config import get_all_node_types
+
+        for item in get_all_node_types():
+            if item["graph_db_name"] == node_type.value:
+                props = item.get("node_definition", {}).get("properties", [])
+                for prop in props:
+                    if prop["name"] not in ("uid", "label", "doc_id"):
+                        return prop["name"]
+                break
+        return "value"
 
     async def _extract_structured_data(
         self,
@@ -356,9 +312,7 @@ class LayeredGraphBuilder:
         user_prompt_template = _load_prompt("layered_extraction_user_prompt")
 
         if not system_prompt or not user_prompt_template:
-            logger.warning(
-                "Layered extraction prompts not found, skipping LLM extraction"
-            )
+            logger.warning("Layered extraction prompts not found, skipping LLM extraction")
             return None
 
         user_prompt = user_prompt_template.replace("{input_text}", text[:12000])
@@ -396,10 +350,10 @@ class LayeredGraphBuilder:
                 if not party_name:
                     continue
                 role = party.get("role", "")
-                
+
                 node_type = NodeType.SUPPLIER if role in ("supplier", "supplier") else NodeType.BUYER
                 uid = _generate_uid(node_type.value, doc_id, party_name)
-                
+
                 session.run(
                     f"""
                     MERGE (o:{node_type.value}:Layered {{uid: $uid}})
@@ -575,7 +529,7 @@ class LayeredGraphBuilder:
                     SET e.label = $label,
                         e.doc_id = $doc_id,
                         e.{value_property} = $value
-                    {"""WITH e MATCH (c:Clause:Layered {uid: $clause_uid}) MERGE (e)-[:MENTIONED_IN]->(c)""" if clause_uid_ref else ""}
+                    {'''WITH e MATCH (c:Clause:Layered {uid: $clause_uid}) MERGE (e)-[:MENTIONED_IN]->(c)''' if clause_uid_ref else ""}
                     """,
                     uid=entity_uid,
                     label=normalized_label,
@@ -593,11 +547,11 @@ class LayeredGraphBuilder:
                 term_type = term.get("term_type", "")
                 if not term_name:
                     continue
-                
+
                 node_type = _get_node_type_by_russian_name(term_type)
                 if node_type is None:
                     node_type = NodeType.PAYMENT_TERMS
-                
+
                 term_uid = _generate_uid(node_type.value, doc_id, term_name, str(i))
                 clause_id_ref = term.get("clause_id", "")
                 clause_uid_ref = clause_uid_map.get(clause_id_ref, "")
@@ -824,9 +778,7 @@ class LayeredGraphBuilder:
                         if isinstance(chunk, dict):
                             texts.append(chunk.get("text", chunk.get("content", "")))
                 elif isinstance(data, dict):
-                    chunks = data.get(
-                        "chunks", data.get("documents", data.get("texts", []))
-                    )
+                    chunks = data.get("chunks", data.get("documents", data.get("texts", [])))
                     for chunk in chunks:
                         if isinstance(chunk, dict):
                             texts.append(chunk.get("text", chunk.get("content", "")))

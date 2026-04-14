@@ -1,6 +1,7 @@
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.graph.schema import (
     DocIdsResponse,
@@ -11,7 +12,9 @@ from app.api.graph.schema import (
     GraphNode,
     NodeRowResponse,
 )
+from app.db.dependencies import get_db_session
 from app.db.user import User
+from app.service.node_type_service import NodeTypeService
 from app.service.neo4j_service import neo4j_service
 from app.utils.security import get_current_active_user
 
@@ -21,19 +24,21 @@ router = APIRouter(prefix="/graph", tags=["graph"])
 @router.get("/entity-types", response_model=EntityTypesResponse)
 async def get_entity_types(
     current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    from app.service.rag_anything import ENTITY_TYPES
-
-    return EntityTypesResponse(entity_types=list(ENTITY_TYPES.keys()))
+    service = NodeTypeService(db)
+    keys = await service.get_entity_type_keys()
+    return EntityTypesResponse(entity_types=keys)
 
 
 @router.get("/entity-type-mapping", response_model=EntityTypeMappingResponse)
 async def get_entity_type_mapping(
     current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    from app.service.rag_anything import ENTITY_TYPES
-
-    return EntityTypeMappingResponse(mapping=ENTITY_TYPES)
+    service = NodeTypeService(db)
+    mapping = await service.get_entity_types_dict()
+    return EntityTypeMappingResponse(mapping=mapping)
 
 
 @router.get("/doc-ids", response_model=DocIdsResponse)

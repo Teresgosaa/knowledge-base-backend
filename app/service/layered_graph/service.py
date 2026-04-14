@@ -9,8 +9,9 @@ from neo4j.time import DateTime as Neo4jDateTime
 from app.service.layered_graph.model import (
     LAYER_DEFINITIONS,
     NODE_DEFINITIONS,
-    NodeType,
+    LayerType,
 )
+from app.service.node_config import get_all_node_types, get_semantic_graph_db_names
 from app.settings.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -40,19 +41,22 @@ _LAYER_QUERIES = {
 
 
 def _build_layer_match(layer: str) -> Optional[str]:
-    layer_node_types = []
-    for ld in LAYER_DEFINITIONS:
-        if ld.layer_type.value == layer:
-            layer_node_types = ld.node_types
-            break
+    layer_node_types = _resolve_layer_node_types(layer)
     if not layer_node_types:
         return None
 
-    label_checks = " OR ".join(f"'{nt.value}' IN labels(n)" for nt in layer_node_types)
-    etype_checks = " OR ".join(
-        f"n.entity_type = '{nt.value}'" for nt in layer_node_types
-    )
+    label_checks = " OR ".join(f"'{nt}' IN labels(n)" for nt in layer_node_types)
+    etype_checks = " OR ".join(f"n.entity_type = '{nt}'" for nt in layer_node_types)
     return f"MATCH (n:Layered) WHERE ({label_checks} OR ({etype_checks}))"
+
+
+def _resolve_layer_node_types(layer: str) -> List[str]:
+    if layer == "semantic":
+        return get_semantic_graph_db_names()
+    for ld in LAYER_DEFINITIONS:
+        if ld.layer_type.value == layer:
+            return [nt.value for nt in ld.node_types]
+    return []
 
 
 class LayeredGraphService:
@@ -73,53 +77,99 @@ class LayeredGraphService:
             self._driver = None
 
     def get_layers(self) -> List[Dict[str, Any]]:
-        return [
-            {
-                "name": ld.name,
-                "layer_type": ld.layer_type.value,
-                "description": ld.description,
-                "node_types": [nt.value for nt in ld.node_types],
-            }
-            for ld in LAYER_DEFINITIONS
-        ]
+        semantic_names = get_semantic_graph_db_names()
+        layers = []
+        for ld in LAYER_DEFINITIONS:
+            if ld.layer_type == LayerType.SEMANTIC:
+                layers.append(
+                    {
+                        "name": ld.name,
+                        "layer_type": ld.layer_type.value,
+                        "description": ld.description,
+                        "node_types": semantic_names,
+                    }
+                )
+            else:
+                layers.append(
+                    {
+                        "name": ld.name,
+                        "layer_type": ld.layer_type.value,
+                        "description": ld.description,
+                        "node_types": [nt.value for nt in ld.node_types],
+                    }
+                )
+        return layers
 
     def get_node_types(self) -> List[Dict[str, Any]]:
-        return [
-            {
-                "node_type": nd.node_type.value,
-                "label": nd.label,
-                "layer": nd.layer.value,
-                "description": nd.description,
-                "properties": [
-                    {
-                        "name": p.name,
-                        "type": p.type,
-                        "required": p.required,
-                        "description": p.description,
-                    }
-                    for p in nd.properties
-                ],
-                "subtypes": nd.subtypes,
-            }
-            for nd in NODE_DEFINITIONS
-        ]
+        result = []
+        for nd in NODE_DEFINITIONS:
+            if nd.layer == LayerType.SEMANTIC:
+                continue
+            result.append(
+                {
+                    "node_type": nd.node_type.value,
+                    "label": nd.label,
+                    "layer": nd.layer.value,
+                    "description": nd.description,
+                    "properties": [
+                        {
+                            "name": p.name,
+                            "type": p.type,
+                            "required": p.required,
+                            "description": p.description,
+                        }
+                        for p in nd.properties
+                    ],
+                    "subtypes": nd.subtypes,
+                }
+            )
+        for item in get_all_node_types():
+            if not item.get("is_active", True):
+                continue
+            node_def = item.get("node_definition", {})
+            result.append(
+                {
+                    "node_type": item["graph_db_name"],
+                    "label": node_def.get("label", item["graph_db_name"]),
+                    "layer": item["layer_type"],
+                    "description": node_def.get("description", item["name"]),
+                    "properties": node_def.get("properties", []),
+                    "subtypes": node_def.get("subtypes", []),
+                }
+            )
+        return result
 
     def get_relationship_types(self) -> List[Dict[str, Any]]:
         from app.service.layered_graph.model import RELATIONSHIP_DEFINITIONS
 
-        return [
-            {
-                "rel_type": rd.rel_type.value,
-                "source_types": [st.value for st in rd.source_types],
-                "target_types": [tt.value for tt in rd.target_types],
-                "description": rd.description,
-                "properties": [
-                    {"name": p.name, "type": p.type, "description": p.description}
-                    for p in rd.properties
-                ],
-            }
-            for rd in RELATIONSHIP_DEFINITIONS
-        ]
+        semantic_names = get_semantic_graph_db_names()
+        semantic_set = set(semantic_names)
+
+        result = []
+        for rd in RELATIONSHIP_DEFINITIONS:
+            if rd.uses_semantic_source and not rd.source_types:
+                source_types = semantic_names
+            else:
+                source_types = [st.value for st in rd.source_types]
+
+            if rd.uses_semantic_target and not rd.target_types:
+                target_types = semantic_names
+            else:
+                target_types = [tt.value for tt in rd.target_types]
+
+            result.append(
+                {
+                    "rel_type": rd.rel_type.value,
+                    "source_types": source_types,
+                    "target_types": target_types,
+                    "description": rd.description,
+                    "properties": [
+                        {"name": p.name, "type": p.type, "description": p.description}
+                        for p in rd.properties
+                    ],
+                }
+            )
+        return result
 
     def get_layer_nodes(
         self,
@@ -138,9 +188,7 @@ class LayeredGraphService:
         params: Dict[str, Any] = {"doc_id": doc_id, "skip": offset, "limit": limit}
 
         if node_type:
-            conditions.append(
-                f"('{node_type}' IN labels(n) OR n.entity_type = '{node_type}')"
-            )
+            conditions.append(f"('{node_type}' IN labels(n) OR n.entity_type = '{node_type}')")
 
         where_clause = " AND " + " AND ".join(conditions)
 
@@ -161,11 +209,7 @@ class LayeredGraphService:
                     continue
                 seen.add(elem_id)
                 node_data = _sanitize_properties(dict(record["n"]))
-                node_labels = [
-                    lbl
-                    for lbl in record["node_labels"]
-                    if lbl not in ("Layered", "base")
-                ]
+                node_labels = [lbl for lbl in record["node_labels"] if lbl not in ("Layered", "base")]
                 if not node_labels:
                     et = node_data.get("entity_type", "")
                     if et:
@@ -192,12 +236,8 @@ class LayeredGraphService:
         if not layer_node_types:
             return []
 
-        label_checks = " OR ".join(
-            f"'{nt.value}' IN labels(n)" for nt in layer_node_types
-        )
-        etype_checks = " OR ".join(
-            f"n.entity_type = '{nt.value}'" for nt in layer_node_types
-        )
+        label_checks = " OR ".join(f"'{nt}' IN labels(n)" for nt in layer_node_types)
+        etype_checks = " OR ".join(f"n.entity_type = '{nt}'" for nt in layer_node_types)
 
         query = f"""
         MATCH (n)
@@ -290,9 +330,7 @@ class LayeredGraphService:
                 "WHERE c.doc_id = $doc_id RETURN count(c) AS cnt",
                 doc_id=doc_id,
             )
-            clause_count = (
-                clause_count_result.single()["cnt"] if clause_count_result.peek() else 0
-            )
+            clause_count = clause_count_result.single()["cnt"] if clause_count_result.peek() else 0
 
             entity_count_result = session.run(
                 "MATCH (e) WHERE 'Layered' IN labels(e) AND e.entity_type IS NOT NULL "
@@ -301,35 +339,25 @@ class LayeredGraphService:
                 "AND e.doc_id = $doc_id RETURN count(e) AS cnt",
                 doc_id=doc_id,
             )
-            entity_count = (
-                entity_count_result.single()["cnt"] if entity_count_result.peek() else 0
-            )
+            entity_count = entity_count_result.single()["cnt"] if entity_count_result.peek() else 0
 
             term_count_result = session.run(
                 "MATCH (t:Term:Layered) WHERE t.doc_id = $doc_id RETURN count(t) AS cnt",
                 doc_id=doc_id,
             )
-            term_count = (
-                term_count_result.single()["cnt"] if term_count_result.peek() else 0
-            )
+            term_count = term_count_result.single()["cnt"] if term_count_result.peek() else 0
 
             obl_count_result = session.run(
                 "MATCH (o:Obligation:Layered) WHERE o.doc_id = $doc_id RETURN count(o) AS cnt",
                 doc_id=doc_id,
             )
-            obl_count = (
-                obl_count_result.single()["cnt"] if obl_count_result.peek() else 0
-            )
+            obl_count = obl_count_result.single()["cnt"] if obl_count_result.peek() else 0
 
             finding_count_result = session.run(
                 "MATCH (f:Finding:Layered) WHERE f.doc_id = $doc_id RETURN count(f) AS cnt",
                 doc_id=doc_id,
             )
-            finding_count = (
-                finding_count_result.single()["cnt"]
-                if finding_count_result.peek()
-                else 0
-            )
+            finding_count = finding_count_result.single()["cnt"] if finding_count_result.peek() else 0
 
             parties_result = session.run(
                 "MATCH (o) WHERE 'Layered' IN labels(o) AND ('Organization' IN labels(o) "
@@ -383,12 +411,8 @@ class LayeredGraphService:
         if layer:
             layer_types = self._get_layer_node_types(layer)
             if layer_types:
-                label_checks = " OR ".join(
-                    f"'{nt.value}' IN labels(n)" for nt in layer_types
-                )
-                etype_checks = " OR ".join(
-                    f"n.entity_type = '{nt.value}'" for nt in layer_types
-                )
+                label_checks = " OR ".join(f"'{nt}' IN labels(n)" for nt in layer_types)
+                etype_checks = " OR ".join(f"n.entity_type = '{nt}'" for nt in layer_types)
                 cypher += f" AND ({label_checks} OR ({etype_checks}))"
 
         cypher += (
@@ -398,8 +422,7 @@ class LayeredGraphService:
         )
 
         cypher += (
-            " RETURN DISTINCT n, labels(n) AS node_labels, elementId(n) AS elem_id"
-            " SKIP 0 LIMIT $limit"
+            " RETURN DISTINCT n, labels(n) AS node_labels, elementId(n) AS elem_id SKIP 0 LIMIT $limit"
         )
 
         with driver.session() as session:
@@ -412,11 +435,7 @@ class LayeredGraphService:
                     continue
                 seen.add(elem_id)
                 node_data = _sanitize_properties(dict(record["n"]))
-                node_labels = [
-                    lbl
-                    for lbl in record["node_labels"]
-                    if lbl not in ("Layered", "base")
-                ]
+                node_labels = [lbl for lbl in record["node_labels"] if lbl not in ("Layered", "base")]
                 if not node_labels:
                     et = node_data.get("entity_type", "")
                     if et:
@@ -439,8 +458,5 @@ class LayeredGraphService:
             )
             return [r["doc_id"] for r in result]
 
-    def _get_layer_node_types(self, layer: str) -> List[NodeType]:
-        for ld in LAYER_DEFINITIONS:
-            if ld.layer_type.value == layer:
-                return ld.node_types
-        return []
+    def _get_layer_node_types(self, layer: str) -> List[str]:
+        return _resolve_layer_node_types(layer)

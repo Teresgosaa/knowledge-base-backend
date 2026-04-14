@@ -240,6 +240,7 @@ Your task:
 - Present structured data in a readable format (lists, tables when appropriate).
 - Answer in the same language the user used for their question.
 - Be concise but thorough.
+- Return answer in Russian
 """
 
 

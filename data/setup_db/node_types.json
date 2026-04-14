@@ -1,0 +1,1097 @@
+[
+  {
+    "name": "Вид документа",
+    "graph_db_name": "DocumentType",
+    "alias": "document_type",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "DocumentType",
+      "layer": "semantic",
+      "label": "DocumentType",
+      "description": "Вид документа",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "виддокумента"},
+        {"name": "value", "type": "str", "required": true},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["виддокумента"]
+  },
+  {
+    "name": "Номер регистрационный",
+    "graph_db_name": "RegistrationNumber",
+    "alias": "registration_number",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "RegistrationNumber",
+      "layer": "semantic",
+      "label": "RegistrationNumber",
+      "description": "Номер регистрационный",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "номеррегистрационный"},
+        {"name": "number", "type": "str", "required": true},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["номеррегистрационный"]
+  },
+  {
+    "name": "Вид договора",
+    "graph_db_name": "ContractType",
+    "alias": "contract_type",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "ContractType",
+      "layer": "semantic",
+      "label": "ContractType",
+      "description": "Вид договора",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "виддоговора"},
+        {"name": "type", "type": "str", "required": true, "description": "Тип договора"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["виддоговора"]
+  },
+  {
+    "name": "Начало действия",
+    "graph_db_name": "StartDate",
+    "alias": "start_date",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "StartDate",
+      "layer": "semantic",
+      "label": "StartDate",
+      "description": "Начало действия / Дата начала",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "началодействия/датаначала"},
+        {"name": "date_value", "type": "str", "required": true, "description": "Дата в ISO формате"},
+        {"name": "original_text", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["началодействия", "датаначала"]
+  },
+  {
+    "name": "Окончание действия",
+    "graph_db_name": "EndDate",
+    "alias": "end_date",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "EndDate",
+      "layer": "semantic",
+      "label": "EndDate",
+      "description": "Окончание действия",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "окончаниедействия"},
+        {"name": "date_value", "type": "str", "required": true, "description": "Дата в ISO формате"},
+        {"name": "original_text", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["окончаниедействия"]
+  },
+  {
+    "name": "Флаг До полного исполнения",
+    "graph_db_name": "UntilFullPerformance",
+    "alias": "until_full_performance",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "UntilFullPerformance",
+      "layer": "semantic",
+      "label": "UntilFullPerformance",
+      "description": "Флаг 'До полного исполнения'",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "флаг'дополногоисполнения'"},
+        {"name": "is_until_full_performance", "type": "bool", "required": true},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["флаг'дополногоисполнения'", "флагдополногоисполнения"]
+  },
+  {
+    "name": "Типовой договор",
+    "graph_db_name": "StandardContract",
+    "alias": "standard_contract",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "StandardContract",
+      "layer": "semantic",
+      "label": "StandardContract",
+      "description": "Типовой договор",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "типовойдоговор"},
+        {"name": "is_standard", "type": "bool", "required": true},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["типовойдоговор"]
+  },
+  {
+    "name": "Деловой партнер",
+    "graph_db_name": "BusinessPartner",
+    "alias": "business_partner",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "BusinessPartner",
+      "layer": "semantic",
+      "label": "BusinessPartner",
+      "description": "Деловой партнер",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "деловойпартнер"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "inn", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["деловойпартнер"]
+  },
+  {
+    "name": "Поставщик",
+    "graph_db_name": "Supplier",
+    "alias": "supplier",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Supplier",
+      "layer": "semantic",
+      "label": "Supplier",
+      "description": "Поставщик",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "поставщик"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "inn", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["поставщик"]
+  },
+  {
+    "name": "Подрядчик",
+    "graph_db_name": "Contractor",
+    "alias": "contractor",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Contractor",
+      "layer": "semantic",
+      "label": "Contractor",
+      "description": "Подрядчик",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "подрядчик"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "inn", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["подрядчик"]
+  },
+  {
+    "name": "Исполнитель",
+    "graph_db_name": "PerformerExecutor",
+    "alias": "performer_executor",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "PerformerExecutor",
+      "layer": "semantic",
+      "label": "PerformerExecutor",
+      "description": "Исполнитель",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "исполнитель"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["исполнитель"]
+  },
+  {
+    "name": "Структурное подразделение",
+    "graph_db_name": "StructureUnit",
+    "alias": "structure_unit",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "StructureUnit",
+      "layer": "semantic",
+      "label": "StructureUnit",
+      "description": "Структурное подразделение",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "структурноеподразделение"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["структурноеподразделение"]
+  },
+  {
+    "name": "Предмет договора",
+    "graph_db_name": "Subject",
+    "alias": "subject",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Subject",
+      "layer": "semantic",
+      "label": "Subject",
+      "description": "Предмет договора",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "предметдоговора"},
+        {"name": "description", "type": "str", "required": true, "description": "Описание"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["предметдоговора"]
+  },
+  {
+    "name": "Сумма договора с НДС",
+    "graph_db_name": "AmountWithVAT",
+    "alias": "amount_with_vat",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "AmountWithVAT",
+      "layer": "semantic",
+      "label": "AmountWithVAT",
+      "description": "Сумма договора с НДС",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "суммадоговорасндс"},
+        {"name": "value", "type": "float", "required": true, "description": "Сумма"},
+        {"name": "currency", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["суммадоговорасндс"]
+  },
+  {
+    "name": "Сумма договора без НДС",
+    "graph_db_name": "AmountWithoutVAT",
+    "alias": "amount_without_vat",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "AmountWithoutVAT",
+      "layer": "semantic",
+      "label": "AmountWithoutVAT",
+      "description": "Сумма договора без НДС",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "суммадоговорабезндс"},
+        {"name": "value", "type": "float", "required": true, "description": "Сумма"},
+        {"name": "currency", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["суммадоговорабезндс"]
+  },
+  {
+    "name": "Ставка НДС",
+    "graph_db_name": "VATRate",
+    "alias": "vat_rate",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "VATRate",
+      "layer": "semantic",
+      "label": "VATRate",
+      "description": "Ставка НДС",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "ставкандс"},
+        {"name": "rate", "type": "float", "required": true, "description": "Ставка НДС в %"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["ставкандс"]
+  },
+  {
+    "name": "Сумма НДС",
+    "graph_db_name": "VATAmount",
+    "alias": "vat_amount",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "VATAmount",
+      "layer": "semantic",
+      "label": "VATAmount",
+      "description": "Сумма НДС",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "суммандс"},
+        {"name": "value", "type": "float", "required": true, "description": "Сумма НДС"},
+        {"name": "currency", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["суммандс"]
+  },
+  {
+    "name": "Форма оплаты",
+    "graph_db_name": "PaymentForm",
+    "alias": "payment_form",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "PaymentForm",
+      "layer": "semantic",
+      "label": "PaymentForm",
+      "description": "Форма оплаты",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "формаоплаты"},
+        {"name": "form", "type": "str", "required": true, "description": "Форма оплаты"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["формаоплаты"]
+  },
+  {
+    "name": "Валюта договора",
+    "graph_db_name": "ContractCurrency",
+    "alias": "contract_currency",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "ContractCurrency",
+      "layer": "semantic",
+      "label": "ContractCurrency",
+      "description": "Валюта договора",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "валютадоговора"},
+        {"name": "code", "type": "str", "required": true, "description": "Код валюты"},
+        {"name": "name", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["валютадоговора"]
+  },
+  {
+    "name": "ID РК КАСУД",
+    "graph_db_name": "KASUDID",
+    "alias": "kasudid",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "KASUDID",
+      "layer": "semantic",
+      "label": "KASUDID",
+      "description": "ID РК КАСУД",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "идрккабуд"},
+        {"name": "kasud_id", "type": "str", "required": true, "description": "Идентификатор КАСУД"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["идрккасуд"]
+  },
+  {
+    "name": "Условия оплаты",
+    "graph_db_name": "PaymentTerms",
+    "alias": "payment_terms",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "PaymentTerms",
+      "layer": "semantic",
+      "label": "PaymentTerms",
+      "description": "Условия оплаты",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "условияоплаты"},
+        {"name": "description", "type": "str", "required": true, "description": "Описание условий"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["условияоплаты", "условияоплатыаванса"]
+  },
+  {
+    "name": "БЕ",
+    "graph_db_name": "BusinessUnit",
+    "alias": "business_unit",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "BusinessUnit",
+      "layer": "semantic",
+      "label": "BusinessUnit",
+      "description": "БЕ",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "бе"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "code", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["бе"]
+  },
+  {
+    "name": "Заказчик",
+    "graph_db_name": "CustomerClient",
+    "alias": "customer_client",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "CustomerClient",
+      "layer": "semantic",
+      "label": "CustomerClient",
+      "description": "Заказчик",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "заказчик"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["заказчик"]
+  },
+  {
+    "name": "Покупатель",
+    "graph_db_name": "Buyer",
+    "alias": "buyer",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Buyer",
+      "layer": "semantic",
+      "label": "Buyer",
+      "description": "Покупатель",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "покупатель"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["покупатель"]
+  },
+  {
+    "name": "Проект",
+    "graph_db_name": "Project",
+    "alias": "project",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Project",
+      "layer": "semantic",
+      "label": "Project",
+      "description": "Проект",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "проект"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование проекта"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["проект"]
+  },
+  {
+    "name": "Код инвестиционного проекта",
+    "graph_db_name": "InvestmentProjectCode",
+    "alias": "investment_project_code",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "InvestmentProjectCode",
+      "layer": "semantic",
+      "label": "InvestmentProjectCode",
+      "description": "Код инвестиционного проекта",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "кодинвестиционногопроекта"},
+        {"name": "code", "type": "str", "required": true, "description": "Код проекта"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["кодинвестиционногопроекта"]
+  },
+  {
+    "name": "Рамочный договор",
+    "graph_db_name": "FrameContract",
+    "alias": "frame_contract",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "FrameContract",
+      "layer": "semantic",
+      "label": "FrameContract",
+      "description": "Рамочный договор",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "рамочныйдоговор"},
+        {"name": "is_frame", "type": "bool", "required": true},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["рамочныйдоговор"]
+  },
+  {
+    "name": "Плательщик",
+    "graph_db_name": "Payer",
+    "alias": "payer",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Payer",
+      "layer": "semantic",
+      "label": "Payer",
+      "description": "Плательщик",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "плательщик"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["плательщик"]
+  },
+  {
+    "name": "Получатель",
+    "graph_db_name": "Recipient",
+    "alias": "recipient",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Recipient",
+      "layer": "semantic",
+      "label": "Recipient",
+      "description": "Получатель",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "получатель"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["получатель"]
+  },
+  {
+    "name": "Статья Бюджета",
+    "graph_db_name": "BudgetItem",
+    "alias": "budget_item",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "BudgetItem",
+      "layer": "semantic",
+      "label": "BudgetItem",
+      "description": "Статья бюджета",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "статьябюджета"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование статьи"},
+        {"name": "code", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["статьябюджета"]
+  },
+  {
+    "name": "Договор составлен по типовой/нетиповой форме",
+    "graph_db_name": "StandardNonStandard",
+    "alias": "standard_non_standard",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "StandardNonStandard",
+      "layer": "semantic",
+      "label": "StandardNonStandard",
+      "description": "Договор составлен по типовой/нетиповой форме",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "договорсоставленпотиповой/нетиповойформе"},
+        {"name": "is_standard", "type": "bool", "required": true},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["договорсоставленпотиповой/нетиповойформе"]
+  },
+  {
+    "name": "Договор расхода",
+    "graph_db_name": "ExpenseContract",
+    "alias": "expense_contract",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "ExpenseContract",
+      "layer": "semantic",
+      "label": "ExpenseContract",
+      "description": "Договор расхода",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "договоррасхода"},
+        {"name": "is_expense", "type": "bool", "required": true},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["договоррасхода"]
+  },
+  {
+    "name": "Договор дохода",
+    "graph_db_name": "RevenueContract",
+    "alias": "revenue_contract",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "RevenueContract",
+      "layer": "semantic",
+      "label": "RevenueContract",
+      "description": "Договор дохода",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "договордохода"},
+        {"name": "is_revenue", "type": "bool", "required": true},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["договордохода"]
+  },
+  {
+    "name": "Номер проекта SAP",
+    "graph_db_name": "SAPProject",
+    "alias": "sap_project",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "SAPProject",
+      "layer": "semantic",
+      "label": "SAPProject",
+      "description": "Номер проекта SAP",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "номерпроектазп"},
+        {"name": "sap_id", "type": "str", "required": true, "description": "ID проекта в SAP"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["номерпроектасап"]
+  },
+  {
+    "name": "Наименование участника-победителя",
+    "graph_db_name": "WinParticipant",
+    "alias": "win_participant",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "WinParticipant",
+      "layer": "semantic",
+      "label": "WinParticipant",
+      "description": "Наименование участника-победителя",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "наименованиеучастника-победителя"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["наименованиеучастника-победителя"]
+  },
+  {
+    "name": "Номер лота",
+    "graph_db_name": "LotNumber",
+    "alias": "lot_number",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "LotNumber",
+      "layer": "semantic",
+      "label": "LotNumber",
+      "description": "Номер лота",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "номерлота"},
+        {"name": "number", "type": "str", "required": true, "description": "Номер лота"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["номерлота"]
+  },
+  {
+    "name": "Победитель по лоту",
+    "graph_db_name": "LotWinner",
+    "alias": "lot_winner",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "LotWinner",
+      "layer": "semantic",
+      "label": "LotWinner",
+      "description": "Победитель по лоту",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "победительполоту"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["победительполоту"]
+  },
+  {
+    "name": "Наименование материала",
+    "graph_db_name": "MaterialName",
+    "alias": "material_name",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "MaterialName",
+      "layer": "semantic",
+      "label": "MaterialName",
+      "description": "Наименование материала",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "наименованиематериала"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["наименованиематериала"]
+  },
+  {
+    "name": "Товар",
+    "graph_db_name": "GoodsProduct",
+    "alias": "goods_product",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "GoodsProduct",
+      "layer": "semantic",
+      "label": "GoodsProduct",
+      "description": "Товар",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "товар"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["товар"]
+  },
+  {
+    "name": "Артикул",
+    "graph_db_name": "SKUArticleNumber",
+    "alias": "sku_article_number",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "SKUArticleNumber",
+      "layer": "semantic",
+      "label": "SKUArticleNumber",
+      "description": "Артикул",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "артикул"},
+        {"name": "sku", "type": "str", "required": true, "description": "Артикул"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["артикул"]
+  },
+  {
+    "name": "Позиция",
+    "graph_db_name": "PositionItem",
+    "alias": "position_item",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "PositionItem",
+      "layer": "semantic",
+      "label": "PositionItem",
+      "description": "Позиция",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "позиция"},
+        {"name": "position_number", "type": "str", "required": true, "description": "Номер позиции"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["позиция"]
+  },
+  {
+    "name": "Код ЕНС",
+    "graph_db_name": "ENSCode",
+    "alias": "ens_code",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "ENSCode",
+      "layer": "semantic",
+      "label": "ENSCode",
+      "description": "Код ЕНС",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "коденс"},
+        {"name": "code", "type": "str", "required": true, "description": "Код ЕНС"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["коденс"]
+  },
+  {
+    "name": "Материал",
+    "graph_db_name": "Material",
+    "alias": "material",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Material",
+      "layer": "semantic",
+      "label": "Material",
+      "description": "Материал",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "материал"},
+        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["материал"]
+  },
+  {
+    "name": "Единица измерения",
+    "graph_db_name": "UnitOfMeasurement",
+    "alias": "unit_of_measurement",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "UnitOfMeasurement",
+      "layer": "semantic",
+      "label": "UnitOfMeasurement",
+      "description": "Единица измерения",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "единицаизмерения"},
+        {"name": "unit", "type": "str", "required": true, "description": "Единица измерения"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["единицаизмерения"]
+  },
+  {
+    "name": "Количество",
+    "graph_db_name": "Quantity",
+    "alias": "quantity",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Quantity",
+      "layer": "semantic",
+      "label": "Quantity",
+      "description": "Количество",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "количество"},
+        {"name": "value", "type": "float", "required": true, "description": "Количество"},
+        {"name": "unit", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["количество"]
+  },
+  {
+    "name": "Объём",
+    "graph_db_name": "Volume",
+    "alias": "volume",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Volume",
+      "layer": "semantic",
+      "label": "Volume",
+      "description": "Объём",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "объём"},
+        {"name": "value", "type": "float", "required": true, "description": "Объем"},
+        {"name": "unit", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["объём"]
+  },
+  {
+    "name": "Стоимость",
+    "graph_db_name": "Cost",
+    "alias": "cost",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Cost",
+      "layer": "semantic",
+      "label": "Cost",
+      "description": "Стоимость",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "стоимость"},
+        {"name": "value", "type": "float", "required": true, "description": "Стоимость"},
+        {"name": "currency", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["стоимость"]
+  },
+  {
+    "name": "Цена",
+    "graph_db_name": "Price",
+    "alias": "price",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "Price",
+      "layer": "semantic",
+      "label": "Price",
+      "description": "Цена",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "цена"},
+        {"name": "value", "type": "float", "required": true, "description": "Цена"},
+        {"name": "currency", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["цена"]
+  },
+  {
+    "name": "Период поставки",
+    "graph_db_name": "DeliveryPeriod",
+    "alias": "delivery_period",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "DeliveryPeriod",
+      "layer": "semantic",
+      "label": "DeliveryPeriod",
+      "description": "Период поставки",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "периодпоставки"},
+        {"name": "description", "type": "str", "required": true, "description": "Описание срока"},
+        {"name": "start_date", "type": "str", "required": false},
+        {"name": "end_date", "type": "str", "required": false},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "russian_names": ["периодпоставки"]
+  }
+]
