@@ -18,4 +18,5 @@ class NodeType(TimestampMixin, Base):
     color: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     node_definition: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    russian_names: Mapped[Optional[List[str]]] = mapped_column(JSONB, nullable=True, default=list)
+    node_names: Mapped[Optional[List[str]]] = mapped_column(JSONB, nullable=True, default=list)
+    prompt: Mapped[str] = mapped_column(nullable=False)

@@ -19,7 +19,9 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["виддокумента"]
+    "node_names": ["виддокумента"],
+    "prompt": "document type (e.g., 'Договор поставки', 'Договор подряда', Протокол тендерного комитета')"
+
   },
   {
     "name": "Номер регистрационный",
@@ -41,7 +43,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["номеррегистрационный"]
+    "node_names": ["номеррегистрационный"],
+    "prompt": "registration/contract number (e.g., '662961', 'МР-0326/2024')"
   },
   {
     "name": "Вид договора",
@@ -63,7 +66,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["виддоговора"]
+    "node_names": ["виддоговора"],
+    "prompt": "contract type/category (e.g., 'Договор поставки', 'Договор подряда', 'Договор оказания услуг')"
   },
   {
     "name": "Начало действия",
@@ -86,7 +90,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["началодействия", "датаначала"]
+    "node_names": ["началодействия", "датаначала"],
+    "prompt": "ONLY the contract's own effective/start date (e.g., 'Договор вступает в силу с...', 'Срок действия договора с...', 'Дата начала действия договора'). Do NOT use this type for: dates of power of attorney issuance ('Дата выдачи доверенности'), dates of general/framework agreement conclusion ('Дата заключения соглашения'), or dates from other ancillary documents. Those dates must be classified as `other`. Contract start date in YYYY-MM-DD format"
   },
   {
     "name": "Окончание действия",
@@ -109,7 +114,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["окончаниедействия"]
+    "node_names": ["окончаниедействия"],
+    "prompt": "contract end date. ONLY extract if an EXPLICIT date in DD.MM.YYYY or YYYY-MM-DD format is present. If a year range like '2025-2027' is given, use 31.12. of the last year. Do NOT compute from relative periods."
   },
   {
     "name": "Флаг До полного исполнения",
@@ -131,7 +137,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["флаг'дополногоисполнения'", "флагдополногоисполнения"]
+    "node_names": ["флаг'дополногоисполнения'", "флагдополногоисполнения"],
+    "prompt": "flag: use 'Х' if active, omit otherwise"
   },
   {
     "name": "Типовой договор",
@@ -153,7 +160,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["типовойдоговор"]
+    "node_names": ["типовойдоговор"],
+    "prompt": "flag: use 'Х' if the contract is standard/template form"
   },
   {
     "name": "Деловой партнер",
@@ -170,81 +178,14 @@
       "properties": [
         {"name": "uid", "type": "str", "required": true},
         {"name": "label", "type": "str", "required": true, "description": "деловойпартнер"},
-        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "name", "type": "str", "required": true, "description": "Деловой партнер"},
         {"name": "inn", "type": "str", "required": false},
         {"name": "doc_id", "type": "str", "required": true}
       ],
       "subtypes": []
     },
-    "russian_names": ["деловойпартнер"]
-  },
-  {
-    "name": "Поставщик",
-    "graph_db_name": "Supplier",
-    "alias": "supplier",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "Supplier",
-      "layer": "semantic",
-      "label": "Supplier",
-      "description": "Поставщик",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "поставщик"},
-        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
-        {"name": "inn", "type": "str", "required": false},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "russian_names": ["поставщик"]
-  },
-  {
-    "name": "Подрядчик",
-    "graph_db_name": "Contractor",
-    "alias": "contractor",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "Contractor",
-      "layer": "semantic",
-      "label": "Contractor",
-      "description": "Подрядчик",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "подрядчик"},
-        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
-        {"name": "inn", "type": "str", "required": false},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "russian_names": ["подрядчик"]
-  },
-  {
-    "name": "Исполнитель",
-    "graph_db_name": "PerformerExecutor",
-    "alias": "performer_executor",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "PerformerExecutor",
-      "layer": "semantic",
-      "label": "PerformerExecutor",
-      "description": "Исполнитель",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "исполнитель"},
-        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "russian_names": ["исполнитель"]
+    "node_names": ["деловойпартнер", "подрядчик", "подрядчик", "поставщик"],
+    "prompt": "the party that PROVIDES goods/services: supplier, contractor, executor ('деловой партнер', 'поставщик', 'подрядчик', 'исполнитель'). In tender protocols this is the WINNER."
   },
   {
     "name": "Структурное подразделение",
@@ -266,7 +207,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["структурноеподразделение"]
+    "node_names": ["структурноеподразделение"],
+    "prompt": "organizational unit/department (отделение, филиал, подразделение). NOT use persons here"
   },
   {
     "name": "Предмет договора",
@@ -288,7 +230,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["предметдоговора"]
+    "node_names": ["предметдоговора"],
+    "prompt": "subject/scope of the contract (goods, works, services description)"
   },
   {
     "name": "Сумма договора с НДС",
@@ -311,7 +254,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["суммадоговорасндс"]
+    "node_names": ["суммадоговорасндс"],
+    "prompt": "total contract amount INCLUDING VAT (look for 'с НДС', 'с учетом НДС', 'в т.ч. НДС')"
   },
   {
     "name": "Сумма договора без НДС",
@@ -334,7 +278,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["суммадоговорабезндс"]
+    "node_names": ["суммадоговорабезндс"],
+    "prompt": "contract amount EXCLUDING VAT (look for 'без НДС', 'без учета НДС')"
   },
   {
     "name": "Ставка НДС",
@@ -356,7 +301,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["ставкандс"]
+    "node_names": ["ставкандс"],
+    "prompt": "VAT rate as a number (e.g., '22', '20', '10', '0', 'Без НДС')"
   },
   {
     "name": "Сумма НДС",
@@ -379,7 +325,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["суммандс"]
+    "node_names": ["суммандс"],
+    "prompt": "VAT amount separately"
   },
   {
     "name": "Форма оплаты",
@@ -401,7 +348,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["формаоплаты"]
+    "node_names": ["формаоплаты"],
+    "prompt": "payment method (Денежная/Вексель/Взаимозачет/Аккредитив/Смешанная)"
   },
   {
     "name": "Валюта договора",
@@ -424,7 +372,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["валютадоговора"]
+    "node_names": ["валютадоговора"],
+    "prompt": "contract currency (RUB, USD, EUR or full name in Russian)"
   },
   {
     "name": "ID РК КАСУД",
@@ -446,7 +395,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["идрккасуд"]
+    "node_names": ["идрккасуд"],
+    "prompt": "KASUD register ID (format: '№ 1000-440/2025/7089')"
   },
   {
     "name": "Условия оплаты",
@@ -468,30 +418,31 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["условияоплаты", "условияоплатыаванса"]
+    "node_names": ["условияоплаты"],
+    "prompt": "post-payment terms, payment schedule after delivery"
   },
   {
-    "name": "БЕ",
-    "graph_db_name": "BusinessUnit",
-    "alias": "business_unit",
+    "name": "Условия оплаты аванса",
+    "graph_db_name": "PrePaymentTerms",
+    "alias": "prepayment_terms",
     "layer_type": "semantic",
     "color": null,
     "is_active": true,
     "node_definition": {
-      "node_type": "BusinessUnit",
+      "node_type": "PrePaymentTerms",
       "layer": "semantic",
-      "label": "BusinessUnit",
-      "description": "БЕ",
+      "label": "PrePaymentTerms",
+      "description": "Условия оплаты аванса",
       "properties": [
         {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "бе"},
-        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
-        {"name": "code", "type": "str", "required": false},
+        {"name": "label", "type": "str", "required": true, "description": "условияоплатыаванса"},
+        {"name": "description", "type": "str", "required": true, "description": "Описание условий"},
         {"name": "doc_id", "type": "str", "required": true}
       ],
       "subtypes": []
     },
-    "russian_names": ["бе"]
+    "node_names": ["условияоплатыаванса"],
+    "prompt": "advance payment terms (prepayment conditions only)"
   },
   {
     "name": "Заказчик",
@@ -513,29 +464,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["заказчик"]
-  },
-  {
-    "name": "Покупатель",
-    "graph_db_name": "Buyer",
-    "alias": "buyer",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "Buyer",
-      "layer": "semantic",
-      "label": "Buyer",
-      "description": "Покупатель",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "покупатель"},
-        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "russian_names": ["покупатель"]
+    "node_names": ["заказчик", "покупатель", "бе"],
+    "prompt": "the ordering party / client / the buying party / business unit / buyer entity (заказчик, покупатель)"
   },
   {
     "name": "Проект",
@@ -557,29 +487,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["проект"]
-  },
-  {
-    "name": "Код инвестиционного проекта",
-    "graph_db_name": "InvestmentProjectCode",
-    "alias": "investment_project_code",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "InvestmentProjectCode",
-      "layer": "semantic",
-      "label": "InvestmentProjectCode",
-      "description": "Код инвестиционного проекта",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "кодинвестиционногопроекта"},
-        {"name": "code", "type": "str", "required": true, "description": "Код проекта"},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "russian_names": ["кодинвестиционногопроекта"]
+    "node_names": ["проект", "кодинвестиционногопроекта", "номерпроектасап"],
+    "prompt": "investment project code ('Код инвестиционного проекта', 'Проект'), SAP project number (format like 'MMA/4900/10000570998')"
   },
   {
     "name": "Рамочный договор",
@@ -601,7 +510,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["рамочныйдоговор"]
+    "node_names": ["рамочныйдоговор"],
+    "prompt": "flag: use 'Х' if framework/agreement contract"
   },
   {
     "name": "Плательщик",
@@ -623,7 +533,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["плательщик"]
+    "node_names": ["плательщик"],
+    "prompt": "the paying party (плательщик)"
   },
   {
     "name": "Получатель",
@@ -645,7 +556,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["получатель"]
+    "node_names": ["получатель"],
+    "prompt": "recipient of goods/services/payment (получатель)"
   },
   {
     "name": "Статья Бюджета",
@@ -668,7 +580,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["статьябюджета"]
+    "node_names": ["статьябюджета"],
+    "prompt": "budget line item (format like '02.01.00' or 'материалы', digits only or text) (статья бюджета)"
   },
   {
     "name": "Договор составлен по типовой/нетиповой форме",
@@ -690,7 +603,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["договорсоставленпотиповой/нетиповойформе"]
+    "node_names": ["договорсоставленпотиповой/нетиповойформе"],
+    "prompt": "standard/non-standard form indicator flag: use 'Х' if applicable (договор составлен по типовой/нетиповой форме)"
   },
   {
     "name": "Договор расхода",
@@ -712,7 +626,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["договоррасхода"]
+    "node_names": ["договоррасхода"],
+    "prompt": "expense contract flag: use 'Х' if applicable (договор расхода)"
   },
   {
     "name": "Договор дохода",
@@ -734,29 +649,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["договордохода"]
-  },
-  {
-    "name": "Номер проекта SAP",
-    "graph_db_name": "SAPProject",
-    "alias": "sap_project",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "SAPProject",
-      "layer": "semantic",
-      "label": "SAPProject",
-      "description": "Номер проекта SAP",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "номерпроектазп"},
-        {"name": "sap_id", "type": "str", "required": true, "description": "ID проекта в SAP"},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "russian_names": ["номерпроектасап"]
+    "node_names": ["договордохода"],
+    "prompt": "income/revenue contract indicator flag: use 'Х' if applicable (договор дохода)"
   },
   {
     "name": "Наименование участника-победителя",
@@ -778,7 +672,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["наименованиеучастника-победителя"]
+    "node_names": ["наименованиеучастника-победителя"],
+    "prompt": "name of the winning participant name in tender (наименование участника-победителя)"
   },
   {
     "name": "Номер лота",
@@ -800,7 +695,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["номерлота"]
+    "node_names": ["номерлота"],
+    "prompt": "lot number in tender (номер лота)"
   },
   {
     "name": "Победитель по лоту",
@@ -822,73 +718,31 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["победительполоту"]
+    "node_names": ["победительполоту"],
+    "prompt": "lot winner indicator flag: use 'X' if applicable (победитель по лоту)"
   },
   {
-    "name": "Наименование материала",
-    "graph_db_name": "MaterialName",
+    "name": "Материал",
+    "graph_db_name": "Material",
     "alias": "material_name",
     "layer_type": "semantic",
     "color": null,
     "is_active": true,
     "node_definition": {
-      "node_type": "MaterialName",
+      "node_type": "Material",
       "layer": "semantic",
-      "label": "MaterialName",
+      "label": "Material",
       "description": "Наименование материала",
       "properties": [
         {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "наименованиематериала"},
-        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "label", "type": "str", "required": true, "description": "Материал"},
+        {"name": "name", "type": "str", "required": true, "description": "Материал"},
         {"name": "doc_id", "type": "str", "required": true}
       ],
       "subtypes": []
     },
-    "russian_names": ["наименованиематериала"]
-  },
-  {
-    "name": "Товар",
-    "graph_db_name": "GoodsProduct",
-    "alias": "goods_product",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "GoodsProduct",
-      "layer": "semantic",
-      "label": "GoodsProduct",
-      "description": "Товар",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "товар"},
-        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "russian_names": ["товар"]
-  },
-  {
-    "name": "Артикул",
-    "graph_db_name": "SKUArticleNumber",
-    "alias": "sku_article_number",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "SKUArticleNumber",
-      "layer": "semantic",
-      "label": "SKUArticleNumber",
-      "description": "Артикул",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "артикул"},
-        {"name": "sku", "type": "str", "required": true, "description": "Артикул"},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "russian_names": ["артикул"]
+    "node_names": ["наименованиематериала", "материал", "товар", "артикул"],
+    "prompt": "material/goods name or article (наименование материала, 'материал', 'товар', 'артикул')"
   },
   {
     "name": "Позиция",
@@ -910,7 +764,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["позиция"]
+    "node_names": ["позиция"],
+    "prompt": "line item position number, if no line items are present use sequential number (позиция)"
   },
   {
     "name": "Код ЕНС",
@@ -932,29 +787,54 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["коденс"]
+    "node_names": ["коденс"],
+    "prompt": "material code/ENS code ('код енс', 'код материала')"
   },
   {
-    "name": "Материал",
-    "graph_db_name": "Material",
-    "alias": "material",
+    "name": "Производитель",
+    "graph_db_name": "Manufacture",
+    "alias": "manufacture",
     "layer_type": "semantic",
     "color": null,
     "is_active": true,
     "node_definition": {
-      "node_type": "Material",
+      "node_type": "Manufacture",
       "layer": "semantic",
-      "label": "Material",
-      "description": "Материал",
+      "label": "Manufacture",
+      "description": "Производитель",
       "properties": [
         {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "материал"},
-        {"name": "name", "type": "str", "required": true, "description": "Наименование"},
+        {"name": "label", "type": "str", "required": true, "description": "производитель"},
+        {"name": "code", "type": "str", "required": true, "description": "Производитель"},
         {"name": "doc_id", "type": "str", "required": true}
       ],
       "subtypes": []
     },
-    "russian_names": ["материал"]
+    "node_names": ["производитель", "изготовитель"],
+    "prompt": "manufacturer ('производитель', 'изготовитель')"
+  },
+  {
+    "name": "Марка",
+    "graph_db_name": "PartNumber",
+    "alias": "part_number",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "PartNumber",
+      "layer": "semantic",
+      "label": "PartNumber",
+      "description": "Марка",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "марка"},
+        {"name": "code", "type": "str", "required": true, "description": "Марка"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "node_names": ["марка", "кодпроизводителя", "кодизготовителя"],
+    "prompt": "manufacturer code ('марка', 'код производителя', 'код изготовителя')"
   },
   {
     "name": "Единица измерения",
@@ -976,7 +856,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["единицаизмерения"]
+    "node_names": ["единицаизмерения"],
+    "prompt": "unit of measurement ('единица измерения', 'еи', 'Ед. изм.', 'Ед. измерения')"
   },
   {
     "name": "Количество",
@@ -999,30 +880,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["количество"]
-  },
-  {
-    "name": "Объём",
-    "graph_db_name": "Volume",
-    "alias": "volume",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "Volume",
-      "layer": "semantic",
-      "label": "Volume",
-      "description": "Объём",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "объём"},
-        {"name": "value", "type": "float", "required": true, "description": "Объем"},
-        {"name": "unit", "type": "str", "required": false},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "russian_names": ["объём"]
+    "node_names": ["количество", "колво", "кол-во"],
+    "prompt": "Extract the quantity values ('количество', 'кол-во'), note the space and dash can be in text for quantity ('кол-во', 'кол- во'), can be part of table with materials, Extract quantities from rows with actual material data (e.g., Фильтр воздушный, Свеча накала)"
   },
   {
     "name": "Стоимость",
@@ -1045,7 +904,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["стоимость"]
+    "node_names": ["стоимость"],
+    "prompt": "cost ('стоимость')"
   },
   {
     "name": "Цена",
@@ -1068,7 +928,8 @@
       ],
       "subtypes": []
     },
-    "russian_names": ["цена"]
+    "node_names": ["цена"],
+    "prompt": "price ('цена')"
   },
   {
     "name": "Период поставки",
@@ -1085,13 +946,14 @@
       "properties": [
         {"name": "uid", "type": "str", "required": true},
         {"name": "label", "type": "str", "required": true, "description": "периодпоставки"},
-        {"name": "description", "type": "str", "required": true, "description": "Описание срока"},
+        {"name": "description", "type": "str", "required": true, "description": "Период поставки"},
         {"name": "start_date", "type": "str", "required": false},
         {"name": "end_date", "type": "str", "required": false},
         {"name": "doc_id", "type": "str", "required": true}
       ],
       "subtypes": []
     },
-    "russian_names": ["периодпоставки"]
+    "node_names": ["периодпоставки"],
+    "prompt": "delivery period ('Период поставки', 'Срок поставки')"
   }
 ]

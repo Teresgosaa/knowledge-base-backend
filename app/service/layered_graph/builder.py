@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 _EXTRACTION_PROMPTS_PATH = "./data/prompts/layered_graph_prompts.md"
 
 
-def _normalize_russian_name(name: str) -> str:
+def _normalize_node_name(name: str) -> str:
     return "".join(c for c in name.lower() if c not in " -/")
 
 
-def _get_node_type_by_russian_name(russian_name: str) -> Optional[NodeType]:
-    normalized = _normalize_russian_name(russian_name)
+def _get_node_type_by_node_name(node_name: str) -> Optional[NodeType]:
+    normalized = _normalize_node_name(node_name)
     mapping = get_russian_to_graph_db_map()
     graph_db_name = mapping.get(normalized)
     if graph_db_name is None:
@@ -227,7 +227,7 @@ class LayeredGraphBuilder:
                 node_data = dict(record["n"])
                 raw_entity_type = node_data.get("entity_type", "")
 
-                node_type = _get_node_type_by_russian_name(raw_entity_type)
+                node_type = _get_node_type_by_node_name(raw_entity_type)
 
                 if node_type is None:
                     continue
@@ -237,7 +237,7 @@ class LayeredGraphBuilder:
                 entity_name = node_data.get("entity_id", node_data.get("name", ""))
                 uid = node_data.get("uid", _generate_uid("promoted", doc_id, str(record["elem_id"])))
 
-                normalized_label = _normalize_russian_name(raw_entity_type)
+                normalized_label = _normalize_node_name(raw_entity_type)
 
                 set_clauses = [
                     "n.uid = $uid",
@@ -368,7 +368,7 @@ class LayeredGraphBuilder:
                     """,
                     uid=uid,
                     name=party_name,
-                    label=_normalize_russian_name(party.get("entity_type", "Поставщик")),
+                    label=_normalize_node_name(party.get("entity_type", "Поставщик")),
                     inn=party.get("inn"),
                     role=role,
                     doc_id=doc_id,
@@ -510,7 +510,7 @@ class LayeredGraphBuilder:
                 if not entity_name:
                     continue
 
-                node_type = _get_node_type_by_russian_name(entity_type_raw)
+                node_type = _get_node_type_by_node_name(entity_type_raw)
                 if node_type is None:
                     logger.warning("Unknown entity type: %s", entity_type_raw)
                     continue
@@ -518,7 +518,7 @@ class LayeredGraphBuilder:
                 entity_uid = _generate_uid(node_type.value, doc_id, entity_name, str(i))
                 clause_id_ref = entity.get("clause_id", "")
                 clause_uid_ref = clause_uid_map.get(clause_id_ref, "")
-                normalized_label = _normalize_russian_name(entity_type_raw)
+                normalized_label = _normalize_node_name(entity_type_raw)
 
                 value_property = self._get_value_property_for_node_type(node_type)
                 value = entity.get("value", entity.get("normalized_value", ""))
@@ -548,14 +548,14 @@ class LayeredGraphBuilder:
                 if not term_name:
                     continue
 
-                node_type = _get_node_type_by_russian_name(term_type)
+                node_type = _get_node_type_by_node_name(term_type)
                 if node_type is None:
                     node_type = NodeType.PAYMENT_TERMS
 
                 term_uid = _generate_uid(node_type.value, doc_id, term_name, str(i))
                 clause_id_ref = term.get("clause_id", "")
                 clause_uid_ref = clause_uid_map.get(clause_id_ref, "")
-                normalized_label = _normalize_russian_name(term_type)
+                normalized_label = _normalize_node_name(term_type)
 
                 session.run(
                     f"""

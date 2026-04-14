@@ -22,7 +22,8 @@ def _row_to_dict(row: NodeTypeModel) -> Dict[str, Any]:
         "color": row.color,
         "is_active": row.is_active,
         "node_definition": row.node_definition or {},
-        "russian_names": row.russian_names or [],
+        "node_names": row.node_names or [],
+        "prompt": row.prompt,
     }
 
 
@@ -53,7 +54,7 @@ def get_entity_types_dict() -> Dict[str, str]:
     for item in _get_cached():
         if not item.get("is_active", True):
             continue
-        for rn in item.get("russian_names", []):
+        for rn in item.get("node_names", []):
             result[rn] = item["graph_db_name"]
     return result
 
@@ -62,8 +63,15 @@ def get_entity_type_keys() -> List[str]:
     return list(get_entity_types_dict().keys())
 
 
+def _normalize_key(name: str) -> str:
+    return "".join(c for c in name.lower() if c not in " -/")
+
+
 def get_russian_to_graph_db_map() -> Dict[str, str]:
-    return get_entity_types_dict()
+    result: Dict[str, str] = {}
+    for key, value in get_entity_types_dict().items():
+        result[_normalize_key(key)] = value
+    return result
 
 
 def get_semantic_graph_db_names() -> List[str]:

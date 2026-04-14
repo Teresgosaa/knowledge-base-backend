@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List
+from typing import List
 
 
 class LayerType(str, Enum):
@@ -70,6 +70,9 @@ class NodeType(str, Enum):
     COST = "Cost"
     PRICE = "Price"
     DELIVERY_PERIOD = "DeliveryPeriod"
+    MANUFACTURE = "Manufacture"
+    PART_NUMBER = "PartNumber"
+    PRE_PAYMENT_TERMS = "PrePaymentTerms"
 
 
 NON_SEMANTIC_NODE_TYPES: set[NodeType] = {

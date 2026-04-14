@@ -64,8 +64,8 @@ class NodeTypeService:
         rows = await self.get_active()
         result: Dict[str, str] = {}
         for row in rows:
-            if row.russian_names:
-                for rn in row.russian_names:
+            if row.node_names:
+                for rn in row.node_names:
                     result[rn] = row.graph_db_name
         return result
 
@@ -73,6 +73,6 @@ class NodeTypeService:
         rows = await self.get_active()
         keys: List[str] = []
         for row in rows:
-            if row.russian_names:
-                keys.extend(row.russian_names)
+            if row.node_names:
+                keys.extend(row.node_names)
         return keys

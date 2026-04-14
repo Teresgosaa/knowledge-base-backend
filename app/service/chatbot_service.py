@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import uuid
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -142,9 +141,7 @@ class MessageService(BaseService):
         self,
         conversation_id: str | None = None,
     ) -> list:
-        query = select(self._model).where(
-            self._model.conversation_id == conversation_id
-        )  # type: ignore
+        query = select(self._model).where(self._model.conversation_id == conversation_id)  # type: ignore
 
         result = await self._db.execute(query)
         instances = list(result.scalars().all())
@@ -328,6 +325,8 @@ class GraphQAService:
                 records.append(row)
             return records
 
+    MAX_LLM_CONTEXT_CHARS = 30000
+
     def _generate_answer(
         self,
         client: openai.OpenAI,
@@ -337,11 +336,18 @@ class GraphQAService:
     ) -> str:
         import json
 
+        total = len(results)
+        shown = results[:20]
+        results_json = json.dumps(shown, ensure_ascii=False, indent=2, default=str)
+
         context = (
             f"User question: {question}\n\n"
             f"Executed Cypher query:\n{cypher}\n\n"
-            f"Query results ({len(results)} records):\n{json.dumps(results[:50], ensure_ascii=False, indent=2, default=str)}"
+            f"Query results ({total} records, showing first {len(shown)}):\n{results_json}"
         )
+
+        if len(context) > self.MAX_LLM_CONTEXT_CHARS:
+            context = context[: self.MAX_LLM_CONTEXT_CHARS]
 
         response = client.responses.create(
             model=f"gpt://{settings.yandex_cloud_folder}/{settings.yandex_cloud_model}",
@@ -352,16 +358,15 @@ class GraphQAService:
         )
         return response.output_text.strip()
 
-    async def ask(self, question: str) -> dict[str, Any]:
-        conversation_id = uuid.uuid4().hex[:12]
+    async def ask(self, question: str, conversation_id: str | None = None) -> dict[str, Any]:
+        if not conversation_id:
+            conversation_id = uuid.uuid4().hex[:12]
 
         try:
             client = self._get_openai_client()
             loop = asyncio.get_event_loop()
 
-            cypher = await loop.run_in_executor(
-                None, self._generate_cypher, client, question
-            )
+            cypher = await loop.run_in_executor(None, self._generate_cypher, client, question)
             logger.info("Generated Cypher for question '%s': %s", question[:80], cypher)
 
             results = await loop.run_in_executor(None, self._execute_cypher, cypher)

@@ -10,7 +10,7 @@ class NodeTypeCreate(BaseModel):
     color: Optional[str] = None
     is_active: bool = True
     node_definition: Optional[Dict[str, Any]] = None
-    russian_names: Optional[List[str]] = []
+    node_names: Optional[List[str]] = []
 
 
 class NodeTypeUpdate(BaseModel):
@@ -20,7 +20,7 @@ class NodeTypeUpdate(BaseModel):
     color: Optional[str] = None
     is_active: Optional[bool] = None
     node_definition: Optional[Dict[str, Any]] = None
-    russian_names: Optional[List[str]] = None
+    node_names: Optional[List[str]] = None
 
 
 class NodeTypeResponse(BaseModel):
@@ -31,7 +31,7 @@ class NodeTypeResponse(BaseModel):
     color: Optional[str] = None
     is_active: bool
     node_definition: Optional[Dict[str, Any]] = None
-    russian_names: Optional[List[str]] = []
+    node_names: Optional[List[str]] = []
 
     model_config = {"from_attributes": True}
 
