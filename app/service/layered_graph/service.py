@@ -6,10 +6,9 @@ from typing import Any, Dict, List, Optional
 from neo4j import GraphDatabase
 from neo4j.time import DateTime as Neo4jDateTime
 
-from app.service.layered_graph.model import (
-    LAYER_DEFINITIONS,
-    NODE_DEFINITIONS,
-    LayerType,
+from app.service.layered_graph.config import (
+    get_active_layers,
+    get_active_relationship_types,
 )
 from app.service.node_config import get_all_node_types, get_semantic_graph_db_names
 from app.settings.settings import settings
@@ -19,25 +18,6 @@ logger = logging.getLogger(__name__)
 
 def _sanitize_properties(props: Dict[str, Any]) -> Dict[str, Any]:
     return {k: str(v) if isinstance(v, Neo4jDateTime) else v for k, v in props.items()}
-
-
-_LAYER_QUERIES = {
-    "document": "MATCH (n:Document:Layered) WHERE ($doc_id IS NULL OR n.doc_id = $doc_id)",
-    "document_version": "MATCH (n:DocumentVersion:Layered) WHERE ($doc_id IS NULL OR n.doc_id = $doc_id)",
-    "clause": "MATCH (n) WHERE ('Clause' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
-    "text_unit": "MATCH (n) WHERE ('TextUnit' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
-    "entity": (
-        "MATCH (n) WHERE ("
-        "  ('Entity' IN labels(n) AND 'Layered' IN labels(n))"
-        "  OR (n.entity_type IS NOT NULL AND 'Layered' IN labels(n) AND NOT 'Document' IN labels(n) AND NOT 'DocumentVersion' IN labels(n))"
-        ") AND ($doc_id IS NULL OR n.doc_id = $doc_id)"
-    ),
-    "term": "MATCH (n) WHERE ('Term' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
-    "obligation": "MATCH (n) WHERE ('Obligation' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
-    "compliance_rule": "MATCH (n) WHERE ('ComplianceRule' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
-    "finding": "MATCH (n) WHERE ('Finding' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
-    "business_object": "MATCH (n) WHERE ('BusinessObject' IN labels(n) AND 'Layered' IN labels(n)) AND ($doc_id IS NULL OR n.doc_id = $doc_id)",
-}
 
 
 def _build_layer_match(layer: str) -> Optional[str]:
@@ -53,9 +33,15 @@ def _build_layer_match(layer: str) -> Optional[str]:
 def _resolve_layer_node_types(layer: str) -> List[str]:
     if layer == "semantic":
         return get_semantic_graph_db_names()
-    for ld in LAYER_DEFINITIONS:
-        if ld.layer_type.value == layer:
-            return [nt.value for nt in ld.node_types]
+    for ld in get_active_layers():
+        if ld["layer_type"] == layer:
+            node_types = []
+            for item in get_all_node_types():
+                if not item.get("is_active", True):
+                    continue
+                if item["layer_type"] == layer:
+                    node_types.append(item["graph_db_name"])
+            return node_types
     return []
 
 
@@ -79,50 +65,35 @@ class LayeredGraphService:
     def get_layers(self) -> List[Dict[str, Any]]:
         semantic_names = get_semantic_graph_db_names()
         layers = []
-        for ld in LAYER_DEFINITIONS:
-            if ld.layer_type == LayerType.SEMANTIC:
+        for ld in get_active_layers():
+            layer_type = ld["layer_type"]
+            if layer_type == "semantic":
                 layers.append(
                     {
-                        "name": ld.name,
-                        "layer_type": ld.layer_type.value,
-                        "description": ld.description,
+                        "name": ld["name"],
+                        "layer_type": layer_type,
+                        "description": ld["description"],
                         "node_types": semantic_names,
                     }
                 )
             else:
+                node_types = [
+                    item["graph_db_name"]
+                    for item in get_all_node_types()
+                    if item.get("is_active", True) and item["layer_type"] == layer_type
+                ]
                 layers.append(
                     {
-                        "name": ld.name,
-                        "layer_type": ld.layer_type.value,
-                        "description": ld.description,
-                        "node_types": [nt.value for nt in ld.node_types],
+                        "name": ld["name"],
+                        "layer_type": layer_type,
+                        "description": ld["description"],
+                        "node_types": node_types,
                     }
                 )
         return layers
 
     def get_node_types(self) -> List[Dict[str, Any]]:
         result = []
-        for nd in NODE_DEFINITIONS:
-            if nd.layer == LayerType.SEMANTIC:
-                continue
-            result.append(
-                {
-                    "node_type": nd.node_type.value,
-                    "label": nd.label,
-                    "layer": nd.layer.value,
-                    "description": nd.description,
-                    "properties": [
-                        {
-                            "name": p.name,
-                            "type": p.type,
-                            "required": p.required,
-                            "description": p.description,
-                        }
-                        for p in nd.properties
-                    ],
-                    "subtypes": nd.subtypes,
-                }
-            )
         for item in get_all_node_types():
             if not item.get("is_active", True):
                 continue
@@ -140,32 +111,30 @@ class LayeredGraphService:
         return result
 
     def get_relationship_types(self) -> List[Dict[str, Any]]:
-        from app.service.layered_graph.model import RELATIONSHIP_DEFINITIONS
-
         semantic_names = get_semantic_graph_db_names()
         semantic_set = set(semantic_names)
 
         result = []
-        for rd in RELATIONSHIP_DEFINITIONS:
-            if rd.uses_semantic_source and not rd.source_types:
+        for rd in get_active_relationship_types():
+            if rd["uses_semantic_source"] and not rd["source_types"]:
                 source_types = semantic_names
             else:
-                source_types = [st.value for st in rd.source_types]
+                source_types = rd["source_types"]
 
-            if rd.uses_semantic_target and not rd.target_types:
+            if rd["uses_semantic_target"] and not rd["target_types"]:
                 target_types = semantic_names
             else:
-                target_types = [tt.value for tt in rd.target_types]
+                target_types = rd["target_types"]
 
             result.append(
                 {
-                    "rel_type": rd.rel_type.value,
+                    "rel_type": rd["rel_type"],
                     "source_types": source_types,
                     "target_types": target_types,
-                    "description": rd.description,
+                    "description": rd["description"],
                     "properties": [
-                        {"name": p.name, "type": p.type, "description": p.description}
-                        for p in rd.properties
+                        {"name": p["name"], "type": p["type"], "description": p.get("description", "")}
+                        for p in rd["properties"]
                     ],
                 }
             )

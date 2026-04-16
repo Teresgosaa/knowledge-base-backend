@@ -5,7 +5,9 @@ from typing import Any, Dict, Type, TypeVar
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.layer import Layer
 from app.db.node_type import NodeType
+from app.db.relationship_type import RelationshipTypeModel
 
 T = TypeVar("T")
 
@@ -20,7 +22,11 @@ class Entry:
     nested_relation: str | None = None
 
 
-ENTRIES = (Entry(NodeType, "data/setup_db/node_types.json", "Типы нод", None, None, None),)
+ENTRIES = (
+    Entry(Layer, "data/setup_db/layers.json", "Слои", None, None, None),
+    Entry(NodeType, "data/setup_db/node_types.json", "Типы нод", None, None, None),
+    Entry(RelationshipTypeModel, "data/setup_db/relationship_types.json", "Типы связей", None, None, None),
+)
 
 
 async def setup_db(db: AsyncSession) -> Dict[str, Any]:

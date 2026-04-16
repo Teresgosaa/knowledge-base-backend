@@ -48,3 +48,33 @@ async def query_chatbot(
     )
 
     return ChatResponse(**result)
+
+
+@router.post("/debug/schema")
+async def debug_schema(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    graph_qa_service.clear_schema_cache()
+    schema = graph_qa_service._get_schema_info()
+    return {"schema": schema}
+
+
+@router.post("/debug/cypher")
+async def debug_cypher(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    request: ChatRequest,
+):
+    import asyncio
+
+    loop = asyncio.get_event_loop()
+    client = graph_qa_service._get_openai_client()
+    cypher = await loop.run_in_executor(
+        None, graph_qa_service._generate_cypher, client, request.question
+    )
+    results = await loop.run_in_executor(None, graph_qa_service._execute_cypher, cypher)
+    return {
+        "question": request.question,
+        "cypher": cypher,
+        "result_count": len(results),
+        "results": results[:10],
+    }

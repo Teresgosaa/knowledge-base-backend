@@ -9,29 +9,24 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 from neo4j import GraphDatabase
 
-from app.service.layered_graph.model import NodeType
-from app.service.node_config import get_russian_to_graph_db_map
+from app.service.node_config import get_all_node_types, get_russian_to_graph_db_map
 from app.settings.settings import settings
 
 logger = logging.getLogger(__name__)
 
 _EXTRACTION_PROMPTS_PATH = "./data/prompts/layered_graph_prompts.md"
 
+_PARTY_ROLE_TYPES = {"Supplier", "Contractor", "CustomerClient", "Buyer"}
+
 
 def _normalize_node_name(name: str) -> str:
     return "".join(c for c in name.lower() if c not in " -/")
 
 
-def _get_node_type_by_node_name(node_name: str) -> Optional[NodeType]:
+def _get_node_type_by_node_name(node_name: str) -> Optional[str]:
     normalized = _normalize_node_name(node_name)
     mapping = get_russian_to_graph_db_map()
-    graph_db_name = mapping.get(normalized)
-    if graph_db_name is None:
-        return None
-    try:
-        return NodeType(graph_db_name)
-    except ValueError:
-        return None
+    return mapping.get(normalized)
 
 
 def _generate_uid(*parts: str) -> str:
@@ -178,13 +173,17 @@ class LayeredGraphBuilder:
                     "LLM extraction returned no clauses for doc_id=%s, building from raw text",
                     doc_id,
                 )
-                stats = self._build_basic_clauses(driver, doc_id, doc_uid, version_uid, text, stats)
+                stats = self._build_basic_clauses(
+                    driver, doc_id, doc_uid, version_uid, text, stats
+                )
         else:
             logger.warning(
                 "LLM extraction returned no data for doc_id=%s, building from raw text",
                 doc_id,
             )
-            stats = self._build_basic_clauses(driver, doc_id, doc_uid, version_uid, text, stats)
+            stats = self._build_basic_clauses(
+                driver, doc_id, doc_uid, version_uid, text, stats
+            )
 
         with driver.session() as session:
             session.run(
@@ -232,10 +231,12 @@ class LayeredGraphBuilder:
                 if node_type is None:
                     continue
 
-                new_labels = ["Layered", node_type.value]
+                new_labels = ["Layered", node_type]
 
                 entity_name = node_data.get("entity_id", node_data.get("name", ""))
-                uid = node_data.get("uid", _generate_uid("promoted", doc_id, str(record["elem_id"])))
+                uid = node_data.get(
+                    "uid", _generate_uid("promoted", doc_id, str(record["elem_id"]))
+                )
 
                 normalized_label = _normalize_node_name(raw_entity_type)
 
@@ -254,9 +255,20 @@ class LayeredGraphBuilder:
                 }
 
                 value_property = self._get_value_property_for_node_type(node_type)
-                if value_property and node_data.get("value"):
-                    set_clauses.append(f"n.{value_property} = $value")
-                    params["value"] = node_data.get("value")
+                if value_property:
+                    raw_value = node_data.get("value")
+                    if raw_value is None:
+                        raw_value = node_data.get("entity_id")
+                    if raw_value is not None:
+                        if isinstance(raw_value, str):
+                            try:
+                                raw_value = float(
+                                    raw_value.replace(" ", "").replace(",", ".")
+                                )
+                            except (ValueError, TypeError):
+                                pass
+                        set_clauses.append(f"n.{value_property} = $value")
+                        params["value"] = raw_value
 
                 label_str = ":".join(new_labels)
                 session.run(
@@ -265,12 +277,7 @@ class LayeredGraphBuilder:
                     **params,
                 )
 
-                if node_type in (
-                    NodeType.SUPPLIER,
-                    NodeType.CONTRACTOR,
-                    NodeType.CUSTOMER_CLIENT,
-                    NodeType.BUYER,
-                ):
+                if node_type in _PARTY_ROLE_TYPES:
                     session.run(
                         """
                         MATCH (org) WHERE elementId(org) = $elem_id
@@ -291,11 +298,9 @@ class LayeredGraphBuilder:
                 )
         return promoted
 
-    def _get_value_property_for_node_type(self, node_type: NodeType) -> str:
-        from app.service.node_config import get_all_node_types
-
+    def _get_value_property_for_node_type(self, graph_db_name: str) -> str:
         for item in get_all_node_types():
-            if item["graph_db_name"] == node_type.value:
+            if item["graph_db_name"] == graph_db_name:
                 props = item.get("node_definition", {}).get("properties", [])
                 for prop in props:
                     if prop["name"] not in ("uid", "label", "doc_id"):
@@ -312,7 +317,9 @@ class LayeredGraphBuilder:
         user_prompt_template = _load_prompt("layered_extraction_user_prompt")
 
         if not system_prompt or not user_prompt_template:
-            logger.warning("Layered extraction prompts not found, skipping LLM extraction")
+            logger.warning(
+                "Layered extraction prompts not found, skipping LLM extraction"
+            )
             return None
 
         user_prompt = user_prompt_template.replace("{input_text}", text[:12000])
@@ -351,12 +358,12 @@ class LayeredGraphBuilder:
                     continue
                 role = party.get("role", "")
 
-                node_type = NodeType.SUPPLIER if role in ("supplier", "supplier") else NodeType.BUYER
-                uid = _generate_uid(node_type.value, doc_id, party_name)
+                node_type = "Supplier" if role in ("supplier", "поставщик") else "Buyer"
+                uid = _generate_uid(node_type, doc_id, party_name)
 
                 session.run(
                     f"""
-                    MERGE (o:{node_type.value}:Layered {{uid: $uid}})
+                    MERGE (o:{node_type}:Layered {{uid: $uid}})
                     SET o.name = $name,
                         o.label = $label,
                         o.inn = $inn,
@@ -515,7 +522,7 @@ class LayeredGraphBuilder:
                     logger.warning("Unknown entity type: %s", entity_type_raw)
                     continue
 
-                entity_uid = _generate_uid(node_type.value, doc_id, entity_name, str(i))
+                entity_uid = _generate_uid(node_type, doc_id, entity_name, str(i))
                 clause_id_ref = entity.get("clause_id", "")
                 clause_uid_ref = clause_uid_map.get(clause_id_ref, "")
                 normalized_label = _normalize_node_name(entity_type_raw)
@@ -525,7 +532,7 @@ class LayeredGraphBuilder:
 
                 session.run(
                     f"""
-                    MERGE (e:`{node_type.value}`:Layered {{uid: $uid}})
+                    MERGE (e:`{node_type}`:Layered {{uid: $uid}})
                     SET e.label = $label,
                         e.doc_id = $doc_id,
                         e.{value_property} = $value
@@ -550,16 +557,16 @@ class LayeredGraphBuilder:
 
                 node_type = _get_node_type_by_node_name(term_type)
                 if node_type is None:
-                    node_type = NodeType.PAYMENT_TERMS
+                    node_type = "PaymentTerms"
 
-                term_uid = _generate_uid(node_type.value, doc_id, term_name, str(i))
+                term_uid = _generate_uid(node_type, doc_id, term_name, str(i))
                 clause_id_ref = term.get("clause_id", "")
                 clause_uid_ref = clause_uid_map.get(clause_id_ref, "")
                 normalized_label = _normalize_node_name(term_type)
 
                 session.run(
                     f"""
-                    MERGE (t:`{node_type.value}`:Layered {{uid: $uid}})
+                    MERGE (t:`{node_type}`:Layered {{uid: $uid}})
                     SET t.label = $label,
                         t.description = $description,
                         t.doc_id = $doc_id
@@ -778,7 +785,9 @@ class LayeredGraphBuilder:
                         if isinstance(chunk, dict):
                             texts.append(chunk.get("text", chunk.get("content", "")))
                 elif isinstance(data, dict):
-                    chunks = data.get("chunks", data.get("documents", data.get("texts", [])))
+                    chunks = data.get(
+                        "chunks", data.get("documents", data.get("texts", []))
+                    )
                     for chunk in chunks:
                         if isinstance(chunk, dict):
                             texts.append(chunk.get("text", chunk.get("content", "")))

@@ -105,7 +105,7 @@ def _load_prompts_from_md(md_path: str = "./data/prompts/prompts.md") -> Dict[st
 
 
 def patch_lightrag_prompts() -> None:
-    from lightrag.prompt import PROMPTS
+    from lightrag.prompt import PROMPTS  # type: ignore
 
     prompts = _load_prompts_from_md()
     for key in (

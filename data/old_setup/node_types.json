@@ -1368,28 +1368,5 @@
     },
     "node_names": ["периодпоставки"],
     "prompt": "delivery period ('Период поставки', 'Срок поставки')"
-  },
-  {
-    "name": "Пункт назначения",
-    "graph_db_name": "Destination",
-    "alias": "destination",
-    "layer_type": "semantic",
-    "color": null,
-    "is_active": true,
-    "node_definition": {
-      "node_type": "Destination",
-      "layer": "semantic",
-      "label": "Destination",
-      "description": "Пункт назначения / место доставки",
-      "properties": [
-        {"name": "uid", "type": "str", "required": true},
-        {"name": "label", "type": "str", "required": true, "description": "пунктназначения"},
-        {"name": "description", "type": "str", "required": true, "description": "Пункт назначения"},
-        {"name": "doc_id", "type": "str", "required": true}
-      ],
-      "subtypes": []
-    },
-    "node_names": ["пунктназначения", "местопоставки"],
-    "prompt": "Destination is a geographical point or object of product delivery. Search next to: 'Destination', 'Place of Delivery', 'Recipient', 'Destination Station', 'Destination Port', 'Delivery Address' ('Пункт назначения', 'Место доставки', 'Грузополучатель', 'Станция назначения', 'Порт назначения', 'Адрес доставки'). Extract the exact name of the item."
   }
 ]

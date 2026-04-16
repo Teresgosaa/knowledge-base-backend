@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional
 
 import openai
@@ -141,7 +143,9 @@ class MessageService(BaseService):
         self,
         conversation_id: str | None = None,
     ) -> list:
-        query = select(self._model).where(self._model.conversation_id == conversation_id)  # type: ignore
+        query = select(self._model).where(
+            self._model.conversation_id == conversation_id
+        )  # type: ignore
 
         result = await self._db.execute(query)
         instances = list(result.scalars().all())
@@ -210,18 +214,120 @@ def get_ai_studio_client() -> AIStudioOpenAIClient:
 
 CYPHER_SYSTEM_PROMPT = """You are a Neo4j Cypher query expert. Given the user's question and the database schema below, generate a single valid Cypher query to answer the question.
 
-Database schema information:
-- Nodes have labels and properties. Common labels include entity types from a knowledge graph.
-- Relationships connect nodes. Common relationship types include various semantic connections.
-- Common node properties: name, doc_id, description, and other domain-specific fields.
+The database is a knowledge graph extracted from procurement/contract documents. Nodes represent entities (suppliers, materials, manufacturers, etc.) and are connected via relationships.
+
+=== CRITICAL: LABEL SYSTEM ===
+The database has nodes with TWO kinds of labels:
+- LightRAG labels: Russian names like `поставщик`, `материал`, `производитель` (always present on entities)
+- Layered labels: English names like `Supplier`, `Material`, `Manufacture` with additional `Layered` label (present only on promoted/layered nodes)
+Prefer using the English Layered labels (e.g. `Manufacture`, `Material`) when they exist, but be aware some nodes may only have the Russian LightRAG labels.
+
+=== CRITICAL: HOW TO FIND RELATED ENTITIES ===
+
+There are TWO ways entities can be related. ALWAYS try direct relationships FIRST:
+
+1. DIRECT graph relationships between entity nodes (PRIMARY):
+   Entity nodes often have DIRECT relationships to each other. Use `(a)--(b)` (undirected) to traverse.
+   Example graph: Manufacture -- Material -- Price, Material -- Quantity
+
+2. MENTIONED_IN via Clause (SECONDARY, may not exist):
+   (Entity)-[:MENTIONED_IN]->(Clause)
+   Entities in the same Clause belong together.
+
+ALWAYS use direct `(a)--(b)` traversal as the primary approach. Use MENTIONED_IN only if you see it in the SAMPLE RELATIONSHIPS section of the schema below.
+
+CORRECT — Find materials with prices and quantities for a manufacturer:
+  MATCH (mf)
+  WHERE (mf:Manufacture OR mf.entity_type = 'производитель')
+    AND (mf.entity_id CONTAINS 'FG Wilson' OR mf.name CONTAINS 'FG Wilson')
+  MATCH (mf)--(m:Material)
+  OPTIONAL MATCH (m)--(p) WHERE (p:Price OR p.entity_type = 'цена')
+  OPTIONAL MATCH (m)--(q) WHERE (q:Quantity OR q.entity_type = 'количество')
+  RETURN COALESCE(m.name, m.entity_id) AS material,
+         COALESCE(p.value, p.entity_id) AS price,
+         COALESCE(q.value, q.entity_id) AS quantity
+  LIMIT 50
+
+CORRECT — Find all entities directly connected to a known entity:
+  MATCH (mf) WHERE mf.entity_id CONTAINS 'FG Wilson'
+  MATCH (mf)--(n)
+  RETURN labels(n) AS node_type, n.entity_type AS entity_type,
+         COALESCE(n.name, n.entity_id) AS name,
+         COALESCE(n.value, n.entity_id) AS value,
+         n.description AS description
+  LIMIT 50
+
+WRONG — Cartesian product (DO NOT use):
+  MATCH (m:Material), (p:Price), (q:Quantity)
+  WHERE m.doc_id = did AND p.doc_id = did AND q.doc_id = did
+  RETURN m.name, p.value, q.value
+
+=== CRITICAL: PROPERTY CONVENTIONS ===
+- `entity_id`: ALWAYS present. Primary identifying value. Also holds numeric values for Price, Quantity, Cost etc when `value` is absent.
+- `name`: may or may NOT be present. Always fall back to entity_id.
+- `value`: numeric value on Price, Quantity, Volume, Cost, etc. MAY BE ABSENT — always use COALESCE(n.value, n.entity_id).
+- `code`: used on Manufacture, PartNumber, ENSCode.
+- `doc_id`: links entity to source document.
+- `label`: normalized label/type string.
+- `description`: textual description (often contains rich context about the entity).
+
+CRITICAL: For entity NAMES use COALESCE(n.name, n.entity_id). For numeric VALUES use COALESCE(n.value, n.entity_id). The `value` property may not exist on all nodes.
+
+When filtering by entity name/value, check multiple properties:
+  For manufacturer: mf.entity_id CONTAINS 'X' OR mf.code CONTAINS 'X' OR mf.name CONTAINS 'X'
+  For material: m.entity_id CONTAINS 'X' OR m.name CONTAINS 'X'
+  For supplier: s.entity_id CONTAINS 'X' OR s.name CONTAINS 'X'
 
 Rules:
 1. Generate ONLY the Cypher query, nothing else.
 2. Do not include any explanation, markdown formatting, or backticks.
 3. Always use MATCH/WHERE patterns to find relevant nodes.
-4. Return relevant node properties and relationship information.
-5. Use LIMIT to cap results at 50.
-6. If the question cannot be answered with the available data, return: RETURN "No data found" AS result
+4. For multi-entity queries: use direct relationship traversal `(a)--(b)` as the PRIMARY approach.
+5. NEVER use bare comma-separated MATCH for multiple entity types sharing only doc_id.
+6. ALWAYS use COALESCE(n.name, n.entity_id) for entity names and COALESCE(n.value, n.entity_id) for numeric values.
+7. Use case-insensitive matching (CONTAINS, toLower) for user-provided string values.
+8. When matching entity types, check BOTH label `(p:Price)` AND entity_type `(p.entity_type = 'цена')` to handle both promoted and non-promoted nodes.
+9. Use LIMIT to cap results at 50.
+10. If the question cannot be answered with the available data, return: RETURN "No data found" AS result
+"""
+
+CYPHER_FALLBACK_PROMPT = """You are a Neo4j Cypher query expert. The first attempt query returned empty or null results. Generate a SIMPLER fallback query using DIRECT relationship traversal.
+
+These entity nodes have DIRECT graph relationships between them (check the SAMPLE RELATIONSHIPS section). They do NOT have MENTIONED_IN relationships.
+
+PATTERN:
+  1. Find the anchor entity by entity_id or name
+  2. Traverse direct relationships using (anchor)--(related_node) — undirected
+  3. Use COALESCE(n.name, n.entity_id) for entity names
+  4. Use COALESCE(n.value, n.entity_id) for numeric values — `value` property may be absent
+  5. Match entity types by BOTH label AND entity_type property: (n:Price OR n.entity_type = 'цена')
+
+FALLBACK for "materials with prices and quantities for manufacturer X":
+  MATCH (mf) WHERE mf.entity_id CONTAINS 'X'
+  MATCH (mf)--(m) WHERE (m:Material OR m.entity_type IN ['наименованиематериала', 'материал'])
+  OPTIONAL MATCH (m)--(p) WHERE (p:Price OR p.entity_type = 'цена')
+  OPTIONAL MATCH (m)--(q) WHERE (q:Quantity OR q.entity_type = 'количество')
+  RETURN COALESCE(m.name, m.entity_id) AS material,
+         COALESCE(p.value, p.entity_id) AS price,
+         COALESCE(q.value, q.entity_id) AS quantity
+  LIMIT 50
+
+If direct Material→Price/Quantity edges do not exist, return ALL nodes connected to the anchor:
+  MATCH (mf) WHERE mf.entity_id CONTAINS 'X'
+  MATCH (mf)--(n)
+  RETURN labels(n) AS node_type, n.entity_type AS entity_type,
+         COALESCE(n.name, n.entity_id) AS name,
+         COALESCE(n.value, n.entity_id) AS value,
+         n.description AS description
+  LIMIT 50
+
+Rules:
+1. Generate ONLY the Cypher query.
+2. ALWAYS use COALESCE(n.name, n.entity_id) for names and COALESCE(n.value, n.entity_id) for values.
+3. Use (a)--(b) undirected traversal for relationships.
+4. Match entity types by BOTH label AND entity_type property.
+5. NEVER use MENTIONED_IN — it does not exist for these nodes.
+6. NEVER use bare Cartesian product: MATCH (a), (b) WHERE a.doc_id = b.doc_id.
 """
 
 ANSWER_SYSTEM_PROMPT = """You are a helpful assistant that answers questions about data stored in a knowledge graph (Neo4j database).
@@ -245,6 +351,21 @@ class GraphQAService:
     def __init__(self) -> None:
         self._schema_cache: Optional[str] = None
 
+    @staticmethod
+    def _load_json_config(filename: str) -> list[dict[str, Any]]:
+        path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "data"
+            / "setup_db"
+            / filename
+        )
+        try:
+            with open(path, encoding="utf-8") as fp:
+                return json.load(fp)
+        except Exception as exc:
+            logger.warning("Failed to load config %s: %s", path, exc)
+            return []
+
     def _get_openai_client(self) -> openai.OpenAI:
         return openai.OpenAI(
             api_key=settings.yandex_cloud_api_key,
@@ -252,37 +373,122 @@ class GraphQAService:
             default_headers={"x-folder-id": settings.yandex_cloud_folder or ""},
         )
 
+    def _build_schema_description(self) -> str:
+        node_types = self._load_json_config("node_types.json")
+        rel_types = self._load_json_config("relationship_types.json")
+        parts: list[str] = []
+
+        parts.append("=== NODE TYPES ===")
+        parts.append(
+            "Each type has: English label (graph_db_name), Russian name, Russian aliases, and key properties."
+        )
+        parts.append("Nodes may carry BOTH English and Russian labels simultaneously.")
+        for nt in node_types:
+            if not nt.get("is_active", True):
+                continue
+            gdb = nt["graph_db_name"]
+            ru_name = nt["name"]
+            aliases = nt.get("node_names", [])
+            props = nt.get("node_definition", {}).get("properties", [])
+            prop_details = []
+            for p in props:
+                if p["name"] == "uid":
+                    continue
+                desc = p.get("description", "")
+                prop_details.append(
+                    f"{p['name']}({p['type']}){'=' + desc if desc else ''}"
+                )
+            key_props = ", ".join(prop_details)
+            alias_str = f" [Russian aliases: {', '.join(aliases)}]" if aliases else ""
+            parts.append(f"  {gdb} ({ru_name}){alias_str}: {key_props}")
+
+        parts.append("")
+        parts.append("=== RELATIONSHIP TYPES ===")
+        for rt in rel_types:
+            if not rt.get("is_active", True):
+                continue
+            src = ", ".join(rt.get("source_types", [])) or "*"
+            tgt = ", ".join(rt.get("target_types", [])) or "*"
+            parts.append(f"  ({src})-[:{rt['rel_type']}]->({tgt}): {rt['name']}")
+
+        try:
+            entity_types = neo4j_service.get_entity_types()
+            parts.append("")
+            parts.append("=== LABELS ACTUALLY IN DATABASE ===")
+            parts.append(", ".join(entity_types))
+
+            parts.append("")
+            parts.append("=== SAMPLE NODE PROPERTIES (from actual data) ===")
+            for et in entity_types:
+                try:
+                    nodes = neo4j_service.get_nodes(entity_type=et, limit=1)
+                    for n in nodes:
+                        props = {
+                            k: repr(v)[:80]
+                            for k, v in n.items()
+                            if k not in ("id", "entity_types") and v is not None
+                        }
+                        parts.append(f"  ({et}): {props}")
+                        break
+                except Exception:
+                    continue
+
+            parts.append("")
+            parts.append("=== SAMPLE RELATIONSHIPS BETWEEN ENTITY NODES ===")
+            driver = neo4j_service._get_driver()
+            with driver.session() as session:
+                try:
+                    rel_result = session.run(
+                        "MATCH (a)-[r]->(b) "
+                        "WHERE a.doc_id IS NOT NULL AND b.doc_id IS NOT NULL "
+                        "AND a.doc_id = b.doc_id "
+                        "AND NOT 'Clause' IN labels(a) AND NOT 'Clause' IN labels(b) "
+                        "AND NOT 'Document' IN labels(a) AND NOT 'Document' IN labels(b) "
+                        "AND NOT 'DocumentVersion' IN labels(a) AND NOT 'DocumentVersion' IN labels(b) "
+                        "AND NOT 'TextUnit' IN labels(a) AND NOT 'TextUnit' IN labels(b) "
+                        "RETURN labels(a) AS src_labels, type(r) AS rel_type, labels(b) AS tgt_labels, "
+                        "a.doc_id AS doc_id "
+                        "LIMIT 30"
+                    )
+                    seen_rels: set[str] = set()
+                    for rec in rel_result:
+                        src = rec["src_labels"]
+                        rt = rec["rel_type"]
+                        tgt = rec["tgt_labels"]
+                        key = f"{src}-{rt}->{tgt}"
+                        if key not in seen_rels:
+                            seen_rels.add(key)
+                            parts.append(f"  {src} -[:{rt}]-> {tgt}")
+                    if not seen_rels:
+                        parts.append(
+                            "  (no direct entity-to-entity relationships found)"
+                        )
+                except Exception as exc:
+                    parts.append(f"  (failed to sample relationships: {exc})")
+        except Exception as exc:
+            logger.warning("Failed to query Neo4j for schema: %s", exc)
+
+        return "\n".join(parts)
+
     def _get_schema_info(self) -> str:
         if self._schema_cache is not None:
             return self._schema_cache
 
         try:
-            entity_types = neo4j_service.get_entity_types()
-            sample_nodes: list[dict[str, Any]] = []
-            seen_types: set[str] = set()
-            for et in entity_types[:5]:
-                if et in seen_types:
-                    continue
-                seen_types.add(et)
-                nodes = neo4j_service.get_nodes(entity_type=et, limit=2)
-                for n in nodes:
-                    props = {
-                        k: type(v).__name__
-                        for k, v in n.items()
-                        if k not in ("id", "entity_types") and v is not None
-                    }
-                    sample_nodes.append({"label": et, "properties": props})
-
-            schema_parts = ["Node labels: " + ", ".join(entity_types[:20])]
-            for sn in sample_nodes:
-                schema_parts.append(f"  ({sn['label']}): {sn['properties']}")
-
-            self._schema_cache = "\n".join(schema_parts)
+            self._schema_cache = self._build_schema_description()
+            logger.info(
+                "Schema info built (%d chars):\n%s",
+                len(self._schema_cache),
+                self._schema_cache[:2000],
+            )
         except Exception as exc:
             logger.warning("Failed to fetch schema info: %s", exc)
             self._schema_cache = "Schema unavailable"
 
         return self._schema_cache
+
+    def clear_schema_cache(self) -> None:
+        self._schema_cache = None
 
     def _generate_cypher(self, client: openai.OpenAI, question: str) -> str:
         schema = self._get_schema_info()
@@ -334,8 +540,6 @@ class GraphQAService:
         cypher: str,
         results: list[dict[str, Any]],
     ) -> str:
-        import json
-
         total = len(results)
         shown = results[:20]
         results_json = json.dumps(shown, ensure_ascii=False, indent=2, default=str)
@@ -358,7 +562,48 @@ class GraphQAService:
         )
         return response.output_text.strip()
 
-    async def ask(self, question: str, conversation_id: str | None = None) -> dict[str, Any]:
+    def _generate_fallback_cypher(
+        self, client: openai.OpenAI, question: str, original_cypher: str
+    ) -> str:
+        schema = self._get_schema_info()
+
+        prompt = (
+            CYPHER_FALLBACK_PROMPT
+            + "\n\n"
+            + schema
+            + f"\n\nOriginal query that returned 0 results:\n{original_cypher}"
+        )
+
+        response = client.responses.create(
+            model=f"gpt://{settings.yandex_cloud_folder}/{settings.yandex_cloud_model}",
+            temperature=0.1,
+            instructions=prompt,
+            input=question,
+            max_output_tokens=1000,
+        )
+        result = response.output_text.strip()
+
+        if result.startswith("```cypher"):
+            result = result[len("```cypher") :]
+        elif result.startswith("```"):
+            result = result[3:]
+        if result.endswith("```"):
+            result = result[:-3]
+        return result.strip()
+
+    @staticmethod
+    def _has_meaningful_results(results: list[dict[str, Any]]) -> bool:
+        if not results:
+            return False
+        for row in results:
+            non_null = [v for v in row.values() if v is not None]
+            if non_null:
+                return True
+        return False
+
+    async def ask(
+        self, question: str, conversation_id: str | None = None
+    ) -> dict[str, Any]:
         if not conversation_id:
             conversation_id = uuid.uuid4().hex[:12]
 
@@ -366,11 +611,39 @@ class GraphQAService:
             client = self._get_openai_client()
             loop = asyncio.get_event_loop()
 
-            cypher = await loop.run_in_executor(None, self._generate_cypher, client, question)
+            cypher = await loop.run_in_executor(
+                None, self._generate_cypher, client, question
+            )
             logger.info("Generated Cypher for question '%s': %s", question[:80], cypher)
 
             results = await loop.run_in_executor(None, self._execute_cypher, cypher)
             logger.info("Cypher returned %d records", len(results))
+
+            if not self._has_meaningful_results(results):
+                logger.info(
+                    "Query returned no meaningful results, trying fallback query"
+                )
+                fallback_cypher = await loop.run_in_executor(
+                    None,
+                    self._generate_fallback_cypher,
+                    client,
+                    question,
+                    cypher,
+                )
+                logger.info(
+                    "Fallback Cypher for question '%s': %s",
+                    question[:80],
+                    fallback_cypher,
+                )
+                fallback_results = await loop.run_in_executor(
+                    None, self._execute_cypher, fallback_cypher
+                )
+                logger.info(
+                    "Fallback Cypher returned %d records", len(fallback_results)
+                )
+                if self._has_meaningful_results(fallback_results):
+                    results = fallback_results
+                    cypher = fallback_cypher
 
             answer = await loop.run_in_executor(
                 None,

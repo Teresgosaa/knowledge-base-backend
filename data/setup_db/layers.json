@@ -1,0 +1,37 @@
+[
+  {
+    "alias": "document",
+    "name": "Документы",
+    "layer_type": "document",
+    "description": "Договор, приложение, допсоглашение, PO, спецификация, акт",
+    "is_active": true
+  },
+  {
+    "alias": "structure",
+    "name": "Структура",
+    "layer_type": "structure",
+    "description": "section / clause / subclause / annex item / table row",
+    "is_active": true
+  },
+  {
+    "alias": "semantic",
+    "name": "Сущности",
+    "layer_type": "semantic",
+    "description": "Сущности RAG Anything: стороны, суммы, даты, валюты, условия оплаты, товары, проекты",
+    "is_active": true
+  },
+  {
+    "alias": "evidence",
+    "name": "Улики",
+    "layer_type": "evidence",
+    "description": "Текстовые единицы, excerpts, spans, page anchors, offsets",
+    "is_active": true
+  },
+  {
+    "alias": "control",
+    "name": "Проверки",
+    "layer_type": "control",
+    "description": "Результаты проверок: mismatch, missing, conflict, risk",
+    "is_active": true
+  }
+]
