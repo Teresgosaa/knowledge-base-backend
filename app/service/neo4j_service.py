@@ -1,9 +1,12 @@
+import logging
 from typing import Any, Optional
 
 from neo4j import Driver, GraphDatabase
 from neo4j.time import Date, DateTime, Duration, Time
 
 from app.settings.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _neo4j_to_native(value: Any) -> Any:
@@ -38,6 +41,9 @@ class Neo4jService:
     def __init__(self):
         self._driver: Optional[Driver] = None
 
+    def _get_db(self) -> Optional[str]:
+        return settings.neo4j_database or None
+
     def _get_driver(self) -> Driver:
         if self._driver is None:
             self._driver = GraphDatabase.driver(
@@ -53,7 +59,7 @@ class Neo4jService:
 
     def get_entity_types(self) -> list[str]:
         driver = self._get_driver()
-        with driver.session() as session:
+        with driver.session(database=self._get_db()) as session:
             result = session.run("MATCH (n) RETURN DISTINCT labels(n) AS labels")
             entity_types: set[str] = set()
             for record in result:
@@ -69,7 +75,7 @@ class Neo4jService:
             query += " AND $entity_type IN labels(n)"
             params["entity_type"] = entity_type
         query += " RETURN DISTINCT n.doc_id AS doc_id ORDER BY n.doc_id"
-        with driver.session() as session:
+        with driver.session(database=self._get_db()) as session:
             result = session.run(query, params)
             return [record["doc_id"] for record in result]
 
@@ -104,7 +110,7 @@ class Neo4jService:
         params["skip"] = offset
         params["limit"] = limit
 
-        with driver.session() as session:
+        with driver.session(database=self._get_db()) as session:
             result = session.run(query, params)  # type: ignore
             nodes = []
             for record in result:
@@ -147,40 +153,47 @@ class Neo4jService:
 
         nodes_map: dict[str, dict[str, Any]] = {}
 
-        with driver.session() as session:
-            result = session.run(node_query, params)  # type: ignore
-            for record in result:
-                elem_id = record["elem_id"]
-                node_data = _convert_node_props(dict(record["n"]))
-                nodes_map[elem_id] = {
-                    "id": elem_id,
-                    "labels": record["node_labels"],
-                    "properties": node_data,
-                }
-
-            if not nodes_map:
-                return {"nodes": [], "edges": []}
-
-            node_ids = list(nodes_map.keys())
-            edge_query = (
-                "MATCH (a)-[r]->(b) "
-                "WHERE elementId(a) IN $node_ids AND elementId(b) IN $node_ids "
-                "RETURN elementId(a) AS source_id, elementId(b) AS target_id, "
-                "type(r) AS rel_type, properties(r) AS rel_props"
-            )
-            edge_result = session.run(edge_query, {"node_ids": node_ids})
-            edges = []
-            for record in edge_result:
-                edges.append(
-                    {
-                        "source": record["source_id"],
-                        "target": record["target_id"],
-                        "type": record["rel_type"],
-                        "properties": _convert_node_props(dict(record["rel_props"]))
-                        if record["rel_props"]
-                        else {},
+        logger.info("Neo4j query: %s | params: %s", node_query, params)
+        edges: list[dict[str, Any]] = []
+        try:
+            with driver.session(database=self._get_db()) as session:
+                result = session.run(node_query, params)  # type: ignore
+                for record in result:
+                    elem_id = record["elem_id"]
+                    node_data = _convert_node_props(dict(record["n"]))
+                    nodes_map[elem_id] = {
+                        "id": elem_id,
+                        "labels": record["node_labels"],
+                        "properties": node_data,
                     }
+
+                logger.info("Neo4j nodes found: %d", len(nodes_map))
+
+                if not nodes_map:
+                    return {"nodes": [], "edges": []}
+
+                node_ids = list(nodes_map.keys())
+                edge_query = (
+                    "MATCH (a)-[r]->(b) "
+                    "WHERE elementId(a) IN $node_ids AND elementId(b) IN $node_ids "
+                    "RETURN elementId(a) AS source_id, elementId(b) AS target_id, "
+                    "type(r) AS rel_type, properties(r) AS rel_props"
                 )
+                edge_result = session.run(edge_query, {"node_ids": node_ids})
+                for record in edge_result:
+                    edges.append(
+                        {
+                            "source": record["source_id"],
+                            "target": record["target_id"],
+                            "type": record["rel_type"],
+                            "properties": _convert_node_props(dict(record["rel_props"]))
+                            if record["rel_props"]
+                            else {},
+                        }
+                    )
+        except Exception as exc:
+            logger.error("Neo4j query failed: %s", exc, exc_info=True)
+            return {"nodes": [], "edges": []}
 
         return {
             "nodes": list(nodes_map.values()),

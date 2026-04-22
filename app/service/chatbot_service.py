@@ -212,15 +212,34 @@ def get_ai_studio_client() -> AIStudioOpenAIClient:
     return _resolve_ai_studio_client()
 
 
-CYPHER_SYSTEM_PROMPT = """You are a Neo4j Cypher query expert. Given the user's question and the database schema below, generate a single valid Cypher query to answer the question.
+CYPHER_SYSTEM_PROMPT = """Ты — эксперт по языку запросов Cypher для базы данных Neo4j. По вопросу пользователя и схеме базы данных сгенерируй один корректный Cypher-запрос.
 
-The database is a knowledge graph extracted from procurement/contract documents. Nodes represent entities (suppliers, materials, manufacturers, etc.) and are connected via relationships.
+ВАЖНО: Отвечай ТОЛЬКО Cypher-запросом. Никаких объяснений, никакого текста до или после запроса — только сам запрос.
+
+База данных — это граф знаний, извлечённый из договорных документов. Узлы представляют сущности (поставщики, материалы, производители и т.д.) и связаны отношениями.
 
 === CRITICAL: LABEL SYSTEM ===
 The database has nodes with TWO kinds of labels:
 - LightRAG labels: Russian names like `поставщик`, `материал`, `производитель` (always present on entities)
 - Layered labels: English names like `Supplier`, `Material`, `Manufacture` with additional `Layered` label (present only on promoted/layered nodes)
 Prefer using the English Layered labels (e.g. `Manufacture`, `Material`) when they exist, but be aware some nodes may only have the Russian LightRAG labels.
+
+=== CRITICAL: STANDALONE ENTITY QUERIES ===
+Many entity types (DeliveryTerms, PaymentTerms, Destination, Subject, etc.) do NOT have direct graph relationships to other entity nodes. They are linked to documents ONLY through the shared `doc_id` property.
+
+When the user asks about a specific entity TYPE (e.g. "what are the delivery terms?", "условия доставки", "условия оплаты"):
+1. FIRST try a simple label/entity_type match WITHOUT relationship traversal:
+   MATCH (n) WHERE (n:DeliveryTerms OR n.entity_type = 'условиядоставки')
+   RETURN n.entity_id AS name, n.description AS description, n.doc_id AS doc_id
+   LIMIT 50
+
+2. If you need to show which document an entity belongs to, match by doc_id property:
+   MATCH (n:DeliveryTerms)
+   OPTIONAL MATCH (d:Document) WHERE d.doc_id = n.doc_id
+   RETURN n.entity_id AS name, n.description AS description, n.doc_id AS doc_id, d.title AS document
+   LIMIT 50
+
+3. Do NOT require `(n)--(other)` relationship traversal for these standalone entity queries.
 
 === CRITICAL: HOW TO FIND RELATED ENTITIES ===
 
@@ -257,10 +276,33 @@ CORRECT — Find all entities directly connected to a known entity:
          n.description AS description
   LIMIT 50
 
+CORRECT — Find standalone entities by type (delivery terms, payment terms, etc.):
+  MATCH (n) WHERE (n:DeliveryTerms OR n.entity_type = 'условиядоставки')
+  RETURN n.entity_id AS name, n.description AS description, n.doc_id AS doc_id
+  LIMIT 50
+
+CORRECT — Find tariff/cost (Cost has multiple aliases — use IN [...], always include document dates):
+  MATCH (n) WHERE (n:Cost OR n.entity_type IN ['стоимость', 'тариф', 'тарифперевозки', 'тарифнаперевозку', 'стоимостьперевозки'])
+  OPTIONAL MATCH (n)--(route) WHERE (route.entity_type IN ['маршрут', 'пунктназначения', 'пунктотправления'])
+  OPTIONAL MATCH (d:Document) WHERE d.doc_id = n.doc_id
+  OPTIONAL MATCH (dt) WHERE dt.doc_id = n.doc_id AND (dt:StartDate OR dt.entity_type IN ['началодействия', 'датаначала'])
+  RETURN COALESCE(n.value, n.entity_id) AS tariff, n.entity_type AS value_type,
+         route.entity_id AS route, n.doc_id AS doc_id,
+         d.title AS document_title, COALESCE(dt.date_value, dt.entity_id) AS effective_date
+  LIMIT 50
+
+IMPORTANT — for ANY query about financial values (стоимость, цена, тариф, сумма) or dates:
+  Always fetch the document's effective date alongside the value so the LLM can determine which value is most current.
+  Use: OPTIONAL MATCH (dt) WHERE dt.doc_id = n.doc_id AND dt.entity_type IN ['началодействия', 'датаначала']
+
 WRONG — Cartesian product (DO NOT use):
   MATCH (m:Material), (p:Price), (q:Quantity)
   WHERE m.doc_id = did AND p.doc_id = did AND q.doc_id = did
   RETURN m.name, p.value, q.value
+
+WRONG — Requiring relationship traversal for standalone entities (DO NOT use):
+  MATCH (dt:DeliveryTerms)--(d:Document)
+  RETURN dt.entity_id, d.title
 
 === CRITICAL: PROPERTY CONVENTIONS ===
 - `entity_id`: ALWAYS present. Primary identifying value. Also holds numeric values for Price, Quantity, Cost etc when `value` is absent.
@@ -273,6 +315,15 @@ WRONG — Cartesian product (DO NOT use):
 
 CRITICAL: For entity NAMES use COALESCE(n.name, n.entity_id). For numeric VALUES use COALESCE(n.value, n.entity_id). The `value` property may not exist on all nodes.
 
+=== CRITICAL: entity_type VALUES ARE NORMALIZED (NO SPACES) ===
+The `entity_type` property stores Russian names WITHOUT spaces: 'условиядоставки' (NOT 'условия доставки'), 'условияоплаты' (NOT 'условия оплаты'), 'суммадоговорасндс' (NOT 'сумма договора с ндс'), etc.
+When filtering by entity_type, ALWAYS remove spaces from Russian names:
+  WRONG: n.entity_type = 'условия доставки'
+  RIGHT: n.entity_type = 'условиядоставки'
+  WRONG: n.entity_type = 'условия оплаты'
+  RIGHT: n.entity_type = 'условияоплаты'
+Check the Russian aliases in the NODE TYPES section above — they show the exact normalized values stored in entity_type.
+
 When filtering by entity name/value, check multiple properties:
   For manufacturer: mf.entity_id CONTAINS 'X' OR mf.code CONTAINS 'X' OR mf.name CONTAINS 'X'
   For material: m.entity_id CONTAINS 'X' OR m.name CONTAINS 'X'
@@ -282,20 +333,34 @@ Rules:
 1. Generate ONLY the Cypher query, nothing else.
 2. Do not include any explanation, markdown formatting, or backticks.
 3. Always use MATCH/WHERE patterns to find relevant nodes.
-4. For multi-entity queries: use direct relationship traversal `(a)--(b)` as the PRIMARY approach.
-5. NEVER use bare comma-separated MATCH for multiple entity types sharing only doc_id.
-6. ALWAYS use COALESCE(n.name, n.entity_id) for entity names and COALESCE(n.value, n.entity_id) for numeric values.
-7. Use case-insensitive matching (CONTAINS, toLower) for user-provided string values.
-8. When matching entity types, check BOTH label `(p:Price)` AND entity_type `(p.entity_type = 'цена')` to handle both promoted and non-promoted nodes.
-9. Use LIMIT to cap results at 50.
-10. If the question cannot be answered with the available data, return: RETURN "No data found" AS result
+4. For queries about a specific entity TYPE (without naming a related entity), use simple label/entity_type match WITHOUT relationship traversal.
+5. For multi-entity queries: use direct relationship traversal `(a)--(b)` as the PRIMARY approach.
+6. NEVER use bare comma-separated MATCH for multiple entity types sharing only doc_id.
+7. ALWAYS use COALESCE(n.name, n.entity_id) for entity names and COALESCE(n.value, n.entity_id) for numeric values.
+8. Use case-insensitive matching (CONTAINS, toLower) for user-provided string values.
+9. When matching entity types, check BOTH the English label AND entity_type property. If a node type has MULTIPLE Russian aliases listed, use IN [...] to match ANY of them — because the actual entity_type in the database may be any one of those aliases:
+   CORRECT for Cost/тариф: WHERE (n:Cost OR n.entity_type IN ['стоимость', 'тариф', 'тарифперевозки', 'тарифнаперевозку', 'стоимостьперевозки'])
+   WRONG (picks only one alias): WHERE (n:Cost OR n.entity_type = 'стоимостьперевозки')
+   Remember: entity_type values have NO spaces.
+10. Use LIMIT to cap results at 50.
+11. NEVER return a sentinel like "No data found". Always generate a MATCH query — even if unsure, try the most likely match.
 """
 
-CYPHER_FALLBACK_PROMPT = """You are a Neo4j Cypher query expert. The first attempt query returned empty or null results. Generate a SIMPLER fallback query using DIRECT relationship traversal.
+CYPHER_FALLBACK_PROMPT = """You are a Neo4j Cypher query expert. The first attempt query returned empty or null results. Generate a SIMPLER fallback query.
 
-These entity nodes have DIRECT graph relationships between them (check the SAMPLE RELATIONSHIPS section). They do NOT have MENTIONED_IN relationships.
+IMPORTANT: Many entity types (DeliveryTerms, PaymentTerms, Destination, Subject, PaymentForm, etc.) are STANDALONE — they have NO direct graph relationships. For these, use a simple label/entity_type match:
 
-PATTERN:
+  MATCH (n) WHERE (n:DeliveryTerms OR n.entity_type = 'условиядоставки')
+  RETURN n.entity_id AS name, n.description AS description, n.doc_id AS doc_id
+  LIMIT 50
+
+To connect standalone entities to documents, match by doc_id property:
+  MATCH (n:DeliveryTerms)
+  OPTIONAL MATCH (d:Document) WHERE d.doc_id = n.doc_id
+  RETURN n.entity_id AS name, n.description AS description, n.doc_id AS doc_id, d.title AS document
+  LIMIT 50
+
+For entity types that DO have direct relationships (check SAMPLE RELATIONSHIPS section), use direct traversal:
   1. Find the anchor entity by entity_id or name
   2. Traverse direct relationships using (anchor)--(related_node) — undirected
   3. Use COALESCE(n.name, n.entity_id) for entity names
@@ -312,7 +377,7 @@ FALLBACK for "materials with prices and quantities for manufacturer X":
          COALESCE(q.value, q.entity_id) AS quantity
   LIMIT 50
 
-If direct Material→Price/Quantity edges do not exist, return ALL nodes connected to the anchor:
+If direct edges do not exist, return ALL nodes connected to the anchor:
   MATCH (mf) WHERE mf.entity_id CONTAINS 'X'
   MATCH (mf)--(n)
   RETURN labels(n) AS node_type, n.entity_type AS entity_type,
@@ -324,10 +389,12 @@ If direct Material→Price/Quantity edges do not exist, return ALL nodes connect
 Rules:
 1. Generate ONLY the Cypher query.
 2. ALWAYS use COALESCE(n.name, n.entity_id) for names and COALESCE(n.value, n.entity_id) for values.
-3. Use (a)--(b) undirected traversal for relationships.
-4. Match entity types by BOTH label AND entity_type property.
-5. NEVER use MENTIONED_IN — it does not exist for these nodes.
-6. NEVER use bare Cartesian product: MATCH (a), (b) WHERE a.doc_id = b.doc_id.
+3. For entity types NOT appearing in SAMPLE RELATIONSHIPS, use simple label/entity_type match WITHOUT relationship traversal.
+4. Match entity types by BOTH label AND entity_type property. If a type has multiple aliases (shown as `entity_type IN [...]` in NODE TYPES), use IN [...] to match ANY of them:
+   CORRECT: WHERE (n:Cost OR n.entity_type IN ['стоимость', 'тариф', 'тарифперевозки', 'тарифнаперевозку', 'стоимостьперевозки'])
+5. NEVER use bare Cartesian product: MATCH (a), (b) WHERE a.doc_id = b.doc_id.
+6. entity_type values are NORMALIZED: no spaces. Use 'условиядоставки' NOT 'условия доставки'. Check NODE TYPES for exact values.
+7. NEVER return a sentinel like "No data found". Always generate a MATCH query.
 """
 
 ANSWER_SYSTEM_PROMPT = """You are a helpful assistant that answers questions about data stored in a knowledge graph (Neo4j database).
@@ -344,6 +411,13 @@ Your task:
 - Answer in the same language the user used for their question.
 - Be concise but thorough.
 - Return answer in Russian
+
+IMPORTANT — when multiple values exist for the same attribute (e.g. cost, price, date):
+- Values with entity_type containing "предыдущ" (предыдущая_стоимость, предыдущая_цена, etc.) are OLD/HISTORICAL values — mention them only as context, not as the primary answer.
+- Values with entity_type "стоимость", "цена", "тариф" etc. (without "предыдущ") are CURRENT values — these take priority.
+- If only a previous value is found and no current one, state clearly that only a historical value is available.
+- When multiple documents contain conflicting values for the same fact, analyze the dates in the data (signing date, effective date, amendment date) and determine which value is most recent. Present the most recent value as the primary answer.
+- Always indicate which document the primary answer comes from (doc_id or document title if available).
 """
 
 
@@ -368,9 +442,12 @@ class GraphQAService:
 
     def _get_openai_client(self) -> openai.OpenAI:
         return openai.OpenAI(
-            api_key=settings.yandex_cloud_api_key,
+            api_key="ignored",
             base_url="https://ai.api.cloud.yandex.net/v1",
-            default_headers={"x-folder-id": settings.yandex_cloud_folder or ""},
+            default_headers={
+                "Authorization": f"Api-Key {settings.yandex_cloud_api_key}",
+                "x-folder-id": settings.yandex_cloud_folder or "",
+            },
         )
 
     def _build_schema_description(self) -> str:
@@ -380,9 +457,12 @@ class GraphQAService:
 
         parts.append("=== NODE TYPES ===")
         parts.append(
-            "Each type has: English label (graph_db_name), Russian name, Russian aliases, and key properties."
+            "Each type has: English label (graph_db_name), Russian name, Russian aliases (=entity_type values), and key properties."
         )
         parts.append("Nodes may carry BOTH English and Russian labels simultaneously.")
+        parts.append(
+            "IMPORTANT: When a node type has MULTIPLE Russian aliases, the entity_type in the database can be ANY of them. Use IN [...] when filtering."
+        )
         for nt in node_types:
             if not nt.get("is_active", True):
                 continue
@@ -436,7 +516,7 @@ class GraphQAService:
             parts.append("")
             parts.append("=== SAMPLE RELATIONSHIPS BETWEEN ENTITY NODES ===")
             driver = neo4j_service._get_driver()
-            with driver.session() as session:
+            with driver.session(database=settings.neo4j_database) as session:
                 try:
                     rel_result = session.run(
                         "MATCH (a)-[r]->(b) "
@@ -490,17 +570,22 @@ class GraphQAService:
     def clear_schema_cache(self) -> None:
         self._schema_cache = None
 
-    def _generate_cypher(self, client: openai.OpenAI, question: str) -> str:
+    def _generate_cypher(self, client: openai.OpenAI, question: str, token_counter: dict) -> str:
         schema = self._get_schema_info()
 
-        response = client.responses.create(
+        response = client.chat.completions.create(
             model=f"gpt://{settings.yandex_cloud_folder}/{settings.yandex_cloud_model}",
             temperature=0.1,
-            instructions=CYPHER_SYSTEM_PROMPT + "\n\n" + schema,
-            input=question,
-            max_output_tokens=1000,
+            messages=[
+                {"role": "system", "content": CYPHER_SYSTEM_PROMPT + "\n\n" + schema},
+                {"role": "user", "content": question},
+            ],
+            max_tokens=1000,
         )
-        result = response.output_text.strip()
+        if hasattr(response, "usage") and response.usage:
+            token_counter["prompt"] = token_counter.get("prompt", 0) + (response.usage.prompt_tokens or 0)
+            token_counter["completion"] = token_counter.get("completion", 0) + (response.usage.completion_tokens or 0)
+        result = (response.choices[0].message.content or "").strip()
 
         result = result.strip()
         if result.startswith("```cypher"):
@@ -511,11 +596,18 @@ class GraphQAService:
             result = result[:-3]
         result = result.strip()
 
+        # Validate that the result looks like a Cypher query
+        cypher_keywords = ("MATCH", "RETURN", "WITH", "CALL", "CREATE", "MERGE", "OPTIONAL")
+        if not any(result.upper().startswith(kw) for kw in cypher_keywords):
+            logger.warning("LLM did not return a Cypher query, got: %s", result[:200])
+            # Return empty result so fallback strategies (_generate_fallback_cypher, _try_direct_entity_query) can run
+            result = "MATCH (n) WHERE 1=0 RETURN n.entity_id LIMIT 0"
+
         return result
 
     def _execute_cypher(self, cypher: str) -> list[dict[str, Any]]:
         driver = neo4j_service._get_driver()
-        with driver.session() as session:
+        with driver.session(database=settings.neo4j_database) as session:
             result = session.run(cypher)
             records = []
             for record in result:
@@ -539,6 +631,7 @@ class GraphQAService:
         question: str,
         cypher: str,
         results: list[dict[str, Any]],
+        token_counter: dict,
     ) -> str:
         total = len(results)
         shown = results[:20]
@@ -553,17 +646,22 @@ class GraphQAService:
         if len(context) > self.MAX_LLM_CONTEXT_CHARS:
             context = context[: self.MAX_LLM_CONTEXT_CHARS]
 
-        response = client.responses.create(
+        response = client.chat.completions.create(
             model=f"gpt://{settings.yandex_cloud_folder}/{settings.yandex_cloud_model}",
             temperature=0.3,
-            instructions=ANSWER_SYSTEM_PROMPT,
-            input=context,
-            max_output_tokens=2000,
+            messages=[
+                {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
+                {"role": "user", "content": context},
+            ],
+            max_tokens=2000,
         )
-        return response.output_text.strip()
+        if hasattr(response, "usage") and response.usage:
+            token_counter["prompt"] = token_counter.get("prompt", 0) + (response.usage.prompt_tokens or 0)
+            token_counter["completion"] = token_counter.get("completion", 0) + (response.usage.completion_tokens or 0)
+        return (response.choices[0].message.content or "").strip()
 
     def _generate_fallback_cypher(
-        self, client: openai.OpenAI, question: str, original_cypher: str
+        self, client: openai.OpenAI, question: str, original_cypher: str, token_counter: dict
     ) -> str:
         schema = self._get_schema_info()
 
@@ -574,14 +672,19 @@ class GraphQAService:
             + f"\n\nOriginal query that returned 0 results:\n{original_cypher}"
         )
 
-        response = client.responses.create(
+        response = client.chat.completions.create(
             model=f"gpt://{settings.yandex_cloud_folder}/{settings.yandex_cloud_model}",
             temperature=0.1,
-            instructions=prompt,
-            input=question,
-            max_output_tokens=1000,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": question},
+            ],
+            max_tokens=1000,
         )
-        result = response.output_text.strip()
+        if hasattr(response, "usage") and response.usage:
+            token_counter["prompt"] = token_counter.get("prompt", 0) + (response.usage.prompt_tokens or 0)
+            token_counter["completion"] = token_counter.get("completion", 0) + (response.usage.completion_tokens or 0)
+        result = (response.choices[0].message.content or "").strip()
 
         if result.startswith("```cypher"):
             result = result[len("```cypher") :]
@@ -595,11 +698,123 @@ class GraphQAService:
     def _has_meaningful_results(results: list[dict[str, Any]]) -> bool:
         if not results:
             return False
+        sentinel_values = {"no data found", "нет данных"}
         for row in results:
             non_null = [v for v in row.values() if v is not None]
-            if non_null:
+            if not non_null:
+                continue
+            all_sentinels = all(
+                isinstance(v, str) and v.strip().lower() in sentinel_values
+                for v in row.values()
+                if v is not None
+            )
+            if not all_sentinels:
                 return True
         return False
+
+    @staticmethod
+    def _normalize_for_match(text: str) -> str:
+        return "".join(c for c in text.lower() if c not in " -/.,!?")
+
+    def _try_direct_entity_query(
+        self, question: str
+    ) -> tuple[list[dict[str, Any]], str]:
+        normalized_q = self._normalize_for_match(question)
+        node_types = self._load_json_config("node_types.json")
+
+        for nt in node_types:
+            if not nt.get("is_active", True):
+                continue
+            if nt.get("layer_type") != "semantic":
+                continue
+
+            gdb = nt["graph_db_name"]
+            ru_name = nt["name"]
+            aliases = nt.get("node_names", [])
+
+            all_terms = [ru_name] + aliases
+            matched_alias = None
+            for term in all_terms:
+                norm_term = self._normalize_for_match(term)
+                if norm_term and norm_term in normalized_q:
+                    matched_alias = aliases[0] if aliases else norm_term
+                    break
+
+            if matched_alias is None:
+                continue
+
+            logger.info(
+                "Direct entity fallback matched node type %s (alias=%s) for question '%s'",
+                gdb,
+                matched_alias,
+                question[:80],
+            )
+
+            queries = [
+                (
+                    f"MATCH (n) WHERE (n:{gdb} OR n.entity_type = '{matched_alias}') "
+                    f"RETURN n.entity_id AS name, n.description AS description, "
+                    f"n.doc_id AS doc_id LIMIT 50"
+                ),
+                (
+                    f"MATCH (n) WHERE n.entity_type = '{matched_alias}' "
+                    f"RETURN n.entity_id AS name, n.description AS description, "
+                    f"n.doc_id AS doc_id LIMIT 50"
+                ),
+            ]
+
+            for cypher in queries:
+                try:
+                    records = self._execute_cypher(cypher)
+                    if self._has_meaningful_results(records):
+                        logger.info(
+                            "Direct entity query returned %d records: %s",
+                            len(records),
+                            cypher,
+                        )
+                        return records, cypher
+                except Exception as exc:
+                    logger.debug("Direct entity query failed: %s", exc)
+                    continue
+
+        return [], ""
+
+    async def retrieve(self, question: str) -> dict[str, Any]:
+        """Retrieve structured data from Neo4j without generating a final answer."""
+        try:
+            client = self._get_openai_client()
+            loop = asyncio.get_event_loop()
+            token_counter: dict = {"prompt": 0, "completion": 0}
+
+            cypher = await loop.run_in_executor(None, self._generate_cypher, client, question, token_counter)
+            results = await loop.run_in_executor(None, self._execute_cypher, cypher)
+
+            if not self._has_meaningful_results(results):
+                fallback_cypher = await loop.run_in_executor(
+                    None, self._generate_fallback_cypher, client, question, cypher, token_counter
+                )
+                fallback_results = await loop.run_in_executor(None, self._execute_cypher, fallback_cypher)
+                if self._has_meaningful_results(fallback_results):
+                    results = fallback_results
+                    cypher = fallback_cypher
+
+            if not self._has_meaningful_results(results):
+                direct_results, direct_cypher = await loop.run_in_executor(
+                    None, self._try_direct_entity_query, question
+                )
+                if self._has_meaningful_results(direct_results):
+                    results = direct_results
+                    cypher = direct_cypher
+
+            return {
+                "success": True,
+                "cypher": cypher,
+                "results": results,
+                "tokens": token_counter,
+            }
+        except Exception as exc:
+            logger.error("GraphQA retrieve error: %s", exc)
+            return {"success": False, "error": str(exc), "results": [], "cypher": None, "tokens": {"prompt": 0, "completion": 0}}
 
     async def ask(
         self, question: str, conversation_id: str | None = None
@@ -608,11 +823,13 @@ class GraphQAService:
             conversation_id = uuid.uuid4().hex[:12]
 
         try:
+            logger.info("GraphQA.ask() started for question: %s", question[:80])
             client = self._get_openai_client()
             loop = asyncio.get_event_loop()
+            token_counter: dict = {"prompt": 0, "completion": 0}
 
             cypher = await loop.run_in_executor(
-                None, self._generate_cypher, client, question
+                None, self._generate_cypher, client, question, token_counter
             )
             logger.info("Generated Cypher for question '%s': %s", question[:80], cypher)
 
@@ -629,6 +846,7 @@ class GraphQAService:
                     client,
                     question,
                     cypher,
+                    token_counter,
                 )
                 logger.info(
                     "Fallback Cypher for question '%s': %s",
@@ -645,6 +863,21 @@ class GraphQAService:
                     results = fallback_results
                     cypher = fallback_cypher
 
+            if not self._has_meaningful_results(results):
+                logger.info(
+                    "LLM queries returned no results, trying direct entity fallback"
+                )
+                direct_results, direct_cypher = await loop.run_in_executor(
+                    None, self._try_direct_entity_query, question
+                )
+                if self._has_meaningful_results(direct_results):
+                    results = direct_results
+                    cypher = direct_cypher
+                    logger.info(
+                        "Direct entity fallback succeeded with %d records",
+                        len(results),
+                    )
+
             answer = await loop.run_in_executor(
                 None,
                 self._generate_answer,
@@ -652,6 +885,16 @@ class GraphQAService:
                 question,
                 cypher,
                 results,
+                token_counter,
+            )
+
+            total_tokens = token_counter["prompt"] + token_counter["completion"]
+            logger.info(
+                "GraphQA tokens for question '%s': prompt=%d, completion=%d, total=%d",
+                question[:80],
+                token_counter["prompt"],
+                token_counter["completion"],
+                total_tokens,
             )
 
             return {
@@ -661,6 +904,11 @@ class GraphQAService:
                 "cypher": cypher,
                 "result_count": len(results),
                 "success": True,
+                "tokens": {
+                    "prompt": token_counter["prompt"],
+                    "completion": token_counter["completion"],
+                    "total": total_tokens,
+                },
             }
         except Exception as exc:
             logger.error("GraphQA error: %s", exc, exc_info=True)
@@ -671,6 +919,7 @@ class GraphQAService:
                 "cypher": None,
                 "result_count": 0,
                 "success": False,
+                "tokens": None,
             }
 
 

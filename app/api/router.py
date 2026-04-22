@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api import auth, chatbot, files, folders, graph, layered_graph, node_type, rag_anything, system
+from app.api import auth, chatbot, criteria, files, folders, graph, layered_graph, node_type, rag_anything, system, validator
 
 router = APIRouter(prefix="/api")
 
@@ -15,6 +15,8 @@ router.include_router(node_type.router)
 router.include_router(rag_anything.router)
 router.include_router(chatbot.router)
 router.include_router(system.router)
+router.include_router(criteria.router)
+router.include_router(validator.router)
 
 
 # end
