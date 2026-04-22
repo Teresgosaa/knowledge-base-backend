@@ -277,6 +277,16 @@ class LayeredGraphBuilder:
                     **params,
                 )
 
+                session.run(
+                    """
+                    MATCH (n) WHERE elementId(n) = $elem_id
+                    MATCH (d:Document:Layered {uid: $doc_uid})
+                    MERGE (n)-[:BELONGS_TO]->(d)
+                    """,
+                    elem_id=record["elem_id"],
+                    doc_uid=doc_uid,
+                )
+
                 if node_type in _PARTY_ROLE_TYPES:
                     session.run(
                         """
@@ -297,6 +307,31 @@ class LayeredGraphBuilder:
                     doc_id,
                 )
         return promoted
+
+    def backfill_belongs_to_relationships(self) -> int:
+        driver = self._get_driver()
+        created = 0
+        with driver.session() as session:
+            result = session.run(
+                """
+                MATCH (n:Layered)
+                WHERE n.doc_id IS NOT NULL
+                  AND NOT 'Document' IN labels(n)
+                  AND NOT 'DocumentVersion' IN labels(n)
+                  AND NOT 'Clause' IN labels(n)
+                  AND NOT 'TextUnit' IN labels(n)
+                  AND NOT (n)-[:BELONGS_TO]->(:Document)
+                MATCH (d:Document:Layered)
+                WHERE d.doc_id = n.doc_id
+                MERGE (n)-[:BELONGS_TO]->(d)
+                RETURN count(n) AS cnt
+                """
+            )
+            for record in result:
+                created += record["cnt"]
+        if created > 0:
+            logger.info("Backfilled %d BELONGS_TO relationships", created)
+        return created
 
     def _get_value_property_for_node_type(self, graph_db_name: str) -> str:
         for item in get_all_node_types():

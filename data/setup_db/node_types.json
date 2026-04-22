@@ -1317,8 +1317,8 @@
       ],
       "subtypes": []
     },
-    "node_names": ["стоимость"],
-    "prompt": "cost ('стоимость')"
+    "node_names": ["стоимость", "тариф", "тарифперевозки", "тарифнаперевозку", "стоимостьперевозки"],
+    "prompt": "cost ('стоимость', 'тариф', 'стоимость перевозки')"
   },
   {
     "name": "Цена",
@@ -1391,5 +1391,28 @@
     },
     "node_names": ["пунктназначения", "местопоставки"],
     "prompt": "Destination is a geographical point or object of product delivery. Search next to: 'Destination', 'Place of Delivery', 'Recipient', 'Destination Station', 'Destination Port', 'Delivery Address' ('Пункт назначения', 'Место доставки', 'Грузополучатель', 'Станция назначения', 'Порт назначения', 'Адрес доставки'). Extract the exact name of the item."
+  },
+  {
+    "name": "Условия доставки",
+    "graph_db_name": "DeliveryTerms",
+    "alias": "delivery_terms",
+    "layer_type": "semantic",
+    "color": null,
+    "is_active": true,
+    "node_definition": {
+      "node_type": "DeliveryTerms",
+      "layer": "semantic",
+      "label": "DeliveryTerms",
+      "description": "Условия доставки",
+      "properties": [
+        {"name": "uid", "type": "str", "required": true},
+        {"name": "label", "type": "str", "required": true, "description": "условиядоставки"},
+        {"name": "description", "type": "str", "required": true, "description": "Условия доставки"},
+        {"name": "doc_id", "type": "str", "required": true}
+      ],
+      "subtypes": []
+    },
+    "node_names": ["условиядоставки"],
+    "prompt": "Delivery terms from section 'Порядок поставки' or similar. Extract: transport mode/type of communication (e.g., 'автомобильное сообщение', 'прямое смешанное железнодорожно-водное сообщение', 'железнодорожное сообщение', 'водное сообщение'), delivery conditions, delivery period depending on weather conditions, and any logistics-related terms describing HOW goods are delivered."
   }
 ]

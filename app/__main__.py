@@ -1,4 +1,8 @@
+import ssl
 import os
+
+ssl._create_default_https_context = ssl._create_unverified_context
+os.environ["PYTHONHTTPSVERIFY"] = "0"
 
 import uvicorn
 

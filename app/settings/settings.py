@@ -47,10 +47,13 @@ class Settings(BaseSettings):
     db_postgres_name: str = "agent_db"
     database_url: str = ""
 
+    qdrant_uri: str = "http://localhost:6333"
+    
     # Variables for the neo4j database
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = ""
     neo4j_password: str = ""
+    neo4j_database: str = ""
 
     # Allowed origins
     allowed_hosts: List[str] = []
@@ -77,6 +80,7 @@ class Settings(BaseSettings):
         "image/gif",
         "application/pdf",
         "text/plain",
+        "text/markdown",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.ms-excel",

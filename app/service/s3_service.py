@@ -109,7 +109,7 @@ class AsyncS3Service:
         """Delete file from S3"""
         try:
             client = await self.get_client()
-            await client.delete_object(Bucket=settings.s3_bucket_name, Key=s3_path)
+            client.delete_object(Bucket=settings.s3_bucket_name, Key=s3_path)
             return True
         except ClientError as e:
             logger.error(f"Delete error: {str(e)}")
@@ -125,7 +125,7 @@ class AsyncS3Service:
             if prefix:
                 params["Prefix"] = prefix
 
-            response = await client.list_objects_v2(**params)
+            response = client.list_objects_v2(**params)
             return response.get("Contents", [])
 
         except ClientError as e:

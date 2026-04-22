@@ -66,6 +66,19 @@ async def _create_tables() -> None:
     await engine.dispose()
 
 
+def _backfill_belongs_to() -> None:
+    try:
+        from app.service.layered_graph.builder import LayeredGraphBuilder
+
+        builder = LayeredGraphBuilder()
+        builder.backfill_belongs_to_relationships()
+        builder.close()
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("BELONGS_TO backfill failed: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
@@ -79,8 +92,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from app.service.layered_graph.config import refresh_cache as refresh_layer_config
     from app.service.node_config import refresh_cache
+
     await refresh_cache()
     await refresh_layer_config()
+
+    import asyncio
+
+    await asyncio.get_event_loop().run_in_executor(None, _backfill_belongs_to)
 
     yield  # Application runs here
 

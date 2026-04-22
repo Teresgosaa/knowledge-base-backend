@@ -7,14 +7,26 @@ class ProcessRequest(BaseModel):
     folder_id: int = Field(..., description="ID of the root folder to process")
 
 
+class ProcessFromS3Request(BaseModel):
+    s3_prefix: str = Field(
+        default="",
+        description=(
+            "S3 key prefix to scan, e.g. 'contracts/'. "
+            "Files at <prefix>/<agreement-name>/<file> are grouped by agreement-name. "
+            "Leave empty to scan the entire bucket root."
+        ),
+    )
+
+
 class ProcessResponse(BaseModel):
     task_id: str
 
 
 class TaskStatusResponse(BaseModel):
     task_id: str
-    folder_id: int
     status: str
+    folder_id: Optional[int] = None
+    s3_prefix: Optional[str] = None
     total_files: Optional[int] = None
     error: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
