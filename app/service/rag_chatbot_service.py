@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 
 RAG_SYSTEM_PROMPT = (
     "Ты — полезный ассистент, отвечающий на вопросы по документам из базы знаний. "
+    "База знаний содержит презентации, документы, отчёты. "
     "Отвечай на русском языке. Будь точным и по существу. "
+    "Если информация взята из презентации — укажи номер слайда. "
     "Если в контексте недостаточно информации, так и скажи."
 )
 
@@ -259,7 +261,7 @@ class RAGChatbotService:
             answer = await rag.aquery(
                 question,
                 mode=mode,
-                # system_prompt=RAG_SYSTEM_PROMPT,
+                system_prompt=RAG_SYSTEM_PROMPT,
             )
 
             total = self._token_counter["prompt"] + self._token_counter["completion"]
