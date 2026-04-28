@@ -24,4 +24,5 @@ dependencies = [
     "greenlet>=3.3.2",
     "argon2-cffi>=25.1.0",
     "qdrant-client>=1.17.1",
+    "python-pptx>=0.6.21",
 ]

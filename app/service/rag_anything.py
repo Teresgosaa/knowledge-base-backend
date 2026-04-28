@@ -34,6 +34,7 @@ from app.db.folder import Folder
 from app.db.kb_file import KBFile
 from app.service.layered_graph.builder import LayeredGraphBuilder
 from app.service.node_config import get_entity_type_keys
+from app.service.pptx_preprocessor import extract_pptx_to_markdown
 from app.settings.settings import settings
 
 RAG_WORKING_DIR: str = "./raganything_workspace"
@@ -428,6 +429,9 @@ class RAGAnythingService:
                     await rag.finalize_storages()
                     raise
 
+                task["status"] = "building_layered_graph"
+                layered_results = await self._build_layered_graphs(local_agreements, llm_func)
+
                 total_tokens = token_counter["prompt"] + token_counter["completion"]
                 logger.info(
                     "Indexing complete — total LLM tokens: prompt=%d, completion=%d, total=%d",
@@ -441,6 +445,7 @@ class RAGAnythingService:
                     "status": "success",
                     "s3_prefix": s3_prefix,
                     "agreements": processing_results,
+                    "layered_graph": layered_results,
                     "tokens": {
                         "prompt": token_counter["prompt"],
                         "completion": token_counter["completion"],
@@ -635,12 +640,29 @@ class RAGAnythingService:
             }
 
             for file_path in file_paths:
-                file_str = str(file_path)
-                logger.info("  Processing file: %s", file_str)
+                logger.info("  Processing file: %s", file_path.name)
                 try:
                     file_doc_id = file_path.stem.lower().replace(" ", "-").replace("_", "-")
+
+                    if file_path.suffix.lower() in (".ppt", ".pptx"):
+                        md_content = extract_pptx_to_markdown(file_path)
+                        if md_content:
+                            md_path = file_path.with_suffix(".md")
+                            md_path.write_text(md_content, encoding="utf-8")
+                            logger.info(
+                                "  Pre-processed PPTX -> MD: %s -> %s",
+                                file_path.name,
+                                md_path.name,
+                            )
+                            # Docling не поддерживает .md — вставляем текст напрямую в LightRAG
+                            await rag.lightrag.ainsert(md_content)
+                            await _set_doc_id_on_nodes(rag, file_path.name, agreement_id)
+                            agreement_result["files"].append({"file": file_path.name, "status": "success"})
+                            logger.info("  Done (direct insert): %s", file_path.name)
+                            continue
+
                     await rag.process_document_complete(
-                        file_path=file_str,
+                        file_path=str(file_path),
                         output_dir=PARSER_OUTPUT_DIR,
                         parse_method="auto",
                         display_stats=True,
@@ -685,11 +707,24 @@ class RAGAnythingService:
 
             for file_path in file_paths:
                 try:
+                    is_pptx = file_path.suffix.lower() in (".ppt", ".pptx")
+                    text_path = file_path
+                    if is_pptx:
+                        md_path = file_path.with_suffix(".md")
+                        if md_path.exists():
+                            text_path = md_path
+
                     doc_text = self._layered_graph_builder.get_document_text(
-                        agreement_id, PARSER_OUTPUT_DIR, file_path=str(file_path)
+                        agreement_id, PARSER_OUTPUT_DIR, file_path=str(text_path)
                     )
                     if not doc_text:
-                        if file_path.suffix.lower() in (
+                        if is_pptx and text_path.suffix.lower() == ".md" and text_path.exists():
+                            doc_text = text_path.read_text(encoding="utf-8", errors="replace")
+                            logger.info(
+                                "Using pre-processed markdown for layered graph: %s",
+                                text_path.name,
+                            )
+                        elif file_path.suffix.lower() in (
                             ".pdf",
                             ".doc",
                             ".docx",
@@ -802,7 +837,7 @@ class RAGAnythingService:
 
                 task["status"] = "building_layered_graph"
                 llm_func = self._make_llm_func(iam_token, token_counter)
-                # layered_results = await self._build_layered_graphs(local_agreements, llm_func)
+                layered_results = await self._build_layered_graphs(local_agreements, llm_func)
 
                 total_tokens = token_counter["prompt"] + token_counter["completion"]
                 logger.info(
@@ -816,7 +851,7 @@ class RAGAnythingService:
                 task["result"] = {
                     "status": "success",
                     "agreements": processing_results,
-                    # "layered_graph": layered_results,
+                    "layered_graph": layered_results,
                     "tokens": {
                         "prompt": token_counter["prompt"],
                         "completion": token_counter["completion"],
