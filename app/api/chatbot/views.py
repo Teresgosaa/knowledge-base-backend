@@ -1,19 +1,51 @@
 import logging
 import uuid
-from typing import Annotated
+from typing import Annotated, List
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.chatbot.schema import ChatRequest, ChatResponse
 from app.db.chatbot import Message
 from app.db.dependencies import get_db_session
+from app.db.folder import Folder
+from app.db.kb_file import KBFile
 from app.db.user import User
 from app.service.base_service import BaseService
 from app.service.chatbot_service import graph_qa_service
 from app.service.hybrid_chatbot_service import hybrid_chatbot_service
 from app.service.rag_chatbot_service import rag_chatbot_service
 from app.utils.security import get_current_active_user
+
+
+async def _get_doc_ids_for_folder(db: AsyncSession, folder_id: int) -> List[str]:
+    """Возвращает список doc_id всех файлов в папке и её подпапках."""
+    result = await db.execute(
+        select(Folder)
+        .where(Folder.id == folder_id)
+        .options(selectinload(Folder.children).selectinload(Folder.files), selectinload(Folder.files))
+    )
+    folder = result.scalar_one_or_none()
+    if not folder:
+        return []
+
+    doc_ids = []
+    # Файлы в самой папке
+    for f in folder.files:
+        stem = f.original_name.rsplit(".", 1)[0]
+        doc_ids.append(stem.lower().replace(" ", "-").replace("_", "-"))
+        doc_ids.append(folder.name)  # agreement_id в Neo4j layered graph
+
+    # Файлы в подпапках
+    for child in folder.children:
+        for f in child.files:
+            stem = f.original_name.rsplit(".", 1)[0]
+            doc_ids.append(stem.lower().replace(" ", "-").replace("_", "-"))
+        doc_ids.append(child.name)
+
+    return list(set(doc_ids))
 
 logger = logging.getLogger(__name__)
 
@@ -33,16 +65,27 @@ async def query_chatbot(
         request.question[:80],
     )
 
+    history = [{"role": m.role, "content": m.content} for m in (request.history or [])]
+
+    # Получаем фильтр по папке если выбрана
+    doc_filter: List[str] = []
+    if request.filter_folder_id:
+        doc_filter = await _get_doc_ids_for_folder(db, request.filter_folder_id)
+        logger.info("Filtering by folder %d: %s", request.filter_folder_id, doc_filter)
+
     if request.retrieval_mode == "rag_anything":
         result = await rag_chatbot_service.ask(
             question=request.question,
             conversation_id=request.conversation_id,
+            history=history,
         )
         result["retrieval_mode"] = "rag_anything"
     elif request.retrieval_mode == "hybrid":
         result = await hybrid_chatbot_service.ask(
             question=request.question,
             conversation_id=request.conversation_id,
+            history=history,
+            doc_filter=doc_filter,
         )
         result["retrieval_mode"] = "hybrid"
     else:

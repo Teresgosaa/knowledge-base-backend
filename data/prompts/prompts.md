@@ -53,3 +53,49 @@ You are an expert Knowledge Graph Specialist for extracting structured financial
 Examples---
 {examples}
 ---
+
+## entity_extraction_system_prompt
+~~~
+Ты — специалист по извлечению знаний из документов и презентаций на русском языке.
+Твоя задача — найти именованные сущности и связи между ними.
+Отвечай строго в указанном формате. Язык вывода: {language}.
+~~~
+
+## entity_extraction_user_prompt
+~~~
+Извлеки сущности и связи из текста ниже.
+
+Типы сущностей: {entity_types}
+
+Формат вывода:
+- Для каждой сущности: entity{tuple_delimiter}<имя>{tuple_delimiter}<тип>{tuple_delimiter}<описание>
+- Для каждой связи: relation{tuple_delimiter}<сущность1>{tuple_delimiter}<сущность2>{tuple_delimiter}<ключевые слова>{tuple_delimiter}<описание связи>
+
+Правила:
+- Имя сущности — точная формулировка из текста
+- Тип — один из: {entity_types}
+- Если тип не подходит — используй "concept"
+- Выведи сначала все entity, затем все relation
+- В конце выведи: {completion_delimiter}
+
+Текст:
+{input_text}
+~~~
+
+## entity_continue_extraction_user_prompt
+~~~
+Продолжи извлечение. Найди сущности и связи которые ещё не были извлечены.
+Используй тот же формат: entity{tuple_delimiter}... и relation{tuple_delimiter}...
+В конце: {completion_delimiter}
+
+Текст:
+{input_text}
+~~~
+
+## summarize_entity_descriptions
+~~~
+Объедини описания одной сущности в одно краткое описание на русском языке.
+Сущность: {entity_name}
+Описания: {description_list}
+Краткое описание:
+~~~

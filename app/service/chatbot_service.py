@@ -442,12 +442,8 @@ class GraphQAService:
 
     def _get_openai_client(self) -> openai.OpenAI:
         return openai.OpenAI(
-            api_key="ignored",
-            base_url="https://ai.api.cloud.yandex.net/v1",
-            default_headers={
-                "Authorization": f"Api-Key {settings.yandex_cloud_api_key}",
-                "x-folder-id": settings.yandex_cloud_folder or "",
-            },
+            api_key=settings.routerai_api_key,
+            base_url=settings.routerai_base_url,
         )
 
     def _build_schema_description(self) -> str:
@@ -574,7 +570,7 @@ class GraphQAService:
         schema = self._get_schema_info()
 
         response = client.chat.completions.create(
-            model=f"gpt://{settings.yandex_cloud_folder}/{settings.yandex_cloud_model}",
+            model=settings.routerai_model,
             temperature=0.1,
             messages=[
                 {"role": "system", "content": CYPHER_SYSTEM_PROMPT + "\n\n" + schema},
@@ -647,7 +643,7 @@ class GraphQAService:
             context = context[: self.MAX_LLM_CONTEXT_CHARS]
 
         response = client.chat.completions.create(
-            model=f"gpt://{settings.yandex_cloud_folder}/{settings.yandex_cloud_model}",
+            model=settings.routerai_model,
             temperature=0.3,
             messages=[
                 {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
@@ -673,7 +669,7 @@ class GraphQAService:
         )
 
         response = client.chat.completions.create(
-            model=f"gpt://{settings.yandex_cloud_folder}/{settings.yandex_cloud_model}",
+            model=settings.routerai_model,
             temperature=0.1,
             messages=[
                 {"role": "system", "content": prompt},
