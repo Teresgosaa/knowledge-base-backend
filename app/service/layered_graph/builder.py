@@ -62,7 +62,15 @@ def _load_prompt(name: str) -> Optional[str]:
     return None
 
 
+def _is_presentation(filename: str, text: str) -> bool:
+    if Path(filename).suffix.lower() in (".ppt", ".pptx"):
+        return True
+    return bool(text) and "## Слайд" in text[:2000]
+
+
 def _detect_doc_subtype(filename: str, text: str) -> str:
+    if _is_presentation(filename, text):
+        return "Presentation"
     _DOC_TYPE_PATTERNS = {
         "договор": "Contract",
         "контракт": "Contract",
@@ -111,7 +119,8 @@ class LayeredGraphBuilder:
     ) -> Dict[str, Any]:
         logger.info("Building layered graph for doc_id=%s file=%s", doc_id, filename)
 
-        doc_subtype = _detect_doc_subtype(filename, text)
+        is_pres = _is_presentation(filename, text)
+        doc_subtype = "Presentation" if is_pres else _detect_doc_subtype(filename, text)
         stats: Dict[str, int] = {
             "document": 0,
             "document_version": 0,
@@ -162,28 +171,34 @@ class LayeredGraphBuilder:
             )
             stats["document_version"] += 1
 
-        extraction = await self._extract_structured_data(text, llm_func)
-
-        if extraction:
-            stats = self._write_extraction_to_graph(
-                driver, doc_id, doc_uid, version_uid, extraction, stats
+        if is_pres:
+            logger.info("Presentation detected for doc_id=%s, using slide-based graph", doc_id)
+            stats = self._build_slide_clauses(
+                driver, doc_id, doc_uid, version_uid, text, stats
             )
-            if stats["clause"] == 0:
+        else:
+            extraction = await self._extract_structured_data(text, llm_func)
+
+            if extraction:
+                stats = self._write_extraction_to_graph(
+                    driver, doc_id, doc_uid, version_uid, extraction, stats
+                )
+                if stats["clause"] == 0:
+                    logger.warning(
+                        "LLM extraction returned no clauses for doc_id=%s, building from raw text",
+                        doc_id,
+                    )
+                    stats = self._build_basic_clauses(
+                        driver, doc_id, doc_uid, version_uid, text, stats
+                    )
+            else:
                 logger.warning(
-                    "LLM extraction returned no clauses for doc_id=%s, building from raw text",
+                    "LLM extraction returned no data for doc_id=%s, building from raw text",
                     doc_id,
                 )
                 stats = self._build_basic_clauses(
                     driver, doc_id, doc_uid, version_uid, text, stats
                 )
-        else:
-            logger.warning(
-                "LLM extraction returned no data for doc_id=%s, building from raw text",
-                doc_id,
-            )
-            stats = self._build_basic_clauses(
-                driver, doc_id, doc_uid, version_uid, text, stats
-            )
 
         with driver.session() as session:
             session.run(
@@ -357,22 +372,36 @@ class LayeredGraphBuilder:
             )
             return None
 
-        user_prompt = user_prompt_template.replace("{input_text}", text[:12000])
-
-        try:
-            response = await llm_func(
-                prompt=user_prompt,
-                system_prompt=system_prompt,
-            )
-            cleaned = response.strip()
-            if cleaned.startswith("```"):
-                cleaned = cleaned.split("\n", 1)[-1]
-            if cleaned.endswith("```"):
-                cleaned = cleaned.rsplit("```", 1)[0]
-            return json.loads(cleaned)
-        except (json.JSONDecodeError, Exception) as exc:
-            logger.error("Failed to extract structured data via LLM: %s", exc)
+        chunk_size = 12000
+        chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)] if text else []
+        if not chunks:
             return None
+
+        merged: Dict[str, Any] = {"document": {}, "clauses": [], "entities": [], "terms": []}
+
+        for idx, chunk in enumerate(chunks):
+            user_prompt = user_prompt_template.replace("{input_text}", chunk)
+            try:
+                response = await llm_func(prompt=user_prompt, system_prompt=system_prompt)
+                cleaned = response.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[-1]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned.rsplit("```", 1)[0]
+                result = json.loads(cleaned)
+                if idx == 0:
+                    merged["document"] = result.get("document", {})
+                merged["clauses"].extend(result.get("clauses", []))
+                merged["entities"].extend(result.get("entities", []))
+                merged["terms"].extend(result.get("terms", []))
+                logger.info("Chunk %d/%d extracted: %d clauses, %d entities",
+                            idx + 1, len(chunks),
+                            len(result.get("clauses", [])),
+                            len(result.get("entities", [])))
+            except (json.JSONDecodeError, Exception) as exc:
+                logger.error("Failed to extract chunk %d via LLM: %s", idx + 1, exc)
+
+        return merged if (merged["clauses"] or merged["entities"]) else None
 
     def _write_extraction_to_graph(
         self,
@@ -554,8 +583,8 @@ class LayeredGraphBuilder:
 
                 node_type = _get_node_type_by_node_name(entity_type_raw)
                 if node_type is None:
-                    logger.warning("Unknown entity type: %s", entity_type_raw)
-                    continue
+                    node_type = entity_type_raw.strip().replace(" ", "_") or "Other"
+                    logger.debug("Unknown entity type '%s', using as-is", entity_type_raw)
 
                 entity_uid = _generate_uid(node_type, doc_id, entity_name, str(i))
                 clause_id_ref = entity.get("clause_id", "")
@@ -618,6 +647,107 @@ class LayeredGraphBuilder:
                 stats["semantic_entity"] += 1
                 stats["relationships"] += 1
 
+        return stats
+
+    def _build_slide_clauses(
+        self,
+        driver,
+        doc_id: str,
+        doc_uid: str,
+        version_uid: str,
+        text: str,
+        stats: Dict[str, int],
+    ) -> Dict[str, int]:
+        """Build Clause nodes from '## Слайд N: title' markers in pre-processed PPTX markdown."""
+        slide_pattern = re.compile(r"^## Слайд (\d+)(?::\s*(.+))?$", re.MULTILINE)
+        positions = [
+            (m.start(), m.group(1), (m.group(2) or "").strip())
+            for m in slide_pattern.finditer(text)
+        ]
+
+        if not positions:
+            logger.warning(
+                "No slide markers found for doc_id=%s, falling back to basic clauses", doc_id
+            )
+            return self._build_basic_clauses(driver, doc_id, doc_uid, version_uid, text, stats)
+
+        prev_uid: Optional[str] = None
+        with driver.session() as session:
+            for i, (pos, slide_num, title) in enumerate(positions):
+                end_pos = positions[i + 1][0] if i + 1 < len(positions) else len(text)
+                slide_text = text[pos:end_pos].strip()
+
+                clause_id = f"slide_{slide_num}"
+                clause_uid = _generate_uid("Clause", doc_id, clause_id)
+
+                session.run(
+                    """
+                    MERGE (c:Clause:Layered {uid: $uid})
+                    SET c.clause_id   = $clause_id,
+                        c.clause_type = 'slide',
+                        c.title       = $title,
+                        c.full_text   = $full_text,
+                        c.order_index = $order_index,
+                        c.page_number = $slide_num,
+                        c.doc_id      = $doc_id
+                    """,
+                    uid=clause_uid,
+                    clause_id=clause_id,
+                    title=title,
+                    full_text=slide_text,
+                    order_index=int(slide_num),
+                    slide_num=int(slide_num),
+                    doc_id=doc_id,
+                )
+                session.run(
+                    """
+                    MATCH (dv:DocumentVersion:Layered {uid: $version_uid})
+                    MATCH (c:Clause:Layered {uid: $clause_uid})
+                    MERGE (dv)-[:HAS_CLAUSE]->(c)
+                    """,
+                    version_uid=version_uid,
+                    clause_uid=clause_uid,
+                )
+
+                tu_uid = _generate_uid("TextUnit", doc_id, clause_id, "0")
+                session.run(
+                    """
+                    MERGE (tu:TextUnit:Layered {uid: $tu_uid})
+                    SET tu.text       = $text,
+                        tu.text_type  = 'slide_content',
+                        tu.page_number = $slide_num,
+                        tu.doc_id     = $doc_id
+                    WITH tu
+                    MATCH (c:Clause:Layered {uid: $clause_uid})
+                    MERGE (c)-[:HAS_TEXT_UNIT]->(tu)
+                    """,
+                    tu_uid=tu_uid,
+                    text=slide_text,
+                    slide_num=int(slide_num),
+                    doc_id=doc_id,
+                    clause_uid=clause_uid,
+                )
+
+                if prev_uid:
+                    session.run(
+                        """
+                        MATCH (a:Clause:Layered {uid: $a_uid})
+                        MATCH (b:Clause:Layered {uid: $b_uid})
+                        MERGE (a)-[:PRECEDES]->(b)
+                        """,
+                        a_uid=prev_uid,
+                        b_uid=clause_uid,
+                    )
+                    stats["relationships"] += 1
+
+                prev_uid = clause_uid
+                stats["clause"] += 1
+                stats["text_unit"] += 1
+                stats["relationships"] += 2
+
+        logger.info(
+            "Built %d slide clauses for doc_id=%s", stats["clause"], doc_id
+        )
         return stats
 
     def _build_basic_clauses(

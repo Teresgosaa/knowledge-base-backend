@@ -31,6 +31,7 @@ HYBRID_ANSWER_PROMPT = """Ты — помощник, отвечающий на �
 - Если один из источников пустой — используй другой
 - Отвечай на русском языке
 - Будь точным и лаконичным; всегда указывай из какого документа взято актуальное значение
+- В текстах встречается формат '[X=N%] текст' — элемент расположен на N% от левого края слайда. Элементы с близким X% находятся в одной колонке или секции
 
 ВАЖНО — при наличии нескольких значений одного атрибута (стоимость, цена, дата):
 - Значения с entity_type, содержащим "предыдущ" (предыдущая_стоимость, предыдущая_цена и т.п.) — СТАРЫЕ/ИСТОРИЧЕСКИЕ. Упоминай только как справку, не как основной ответ.
@@ -46,12 +47,8 @@ class HybridChatbotService:
 
     def _get_openai_client(self) -> openai.OpenAI:
         return openai.OpenAI(
-            api_key="ignored",
-            base_url="https://ai.api.cloud.yandex.net/v1",
-            default_headers={
-                "Authorization": f"Api-Key {settings.yandex_cloud_api_key}",
-                "x-folder-id": settings.yandex_cloud_folder or "",
-            },
+            api_key=settings.routerai_api_key,
+            base_url=settings.routerai_base_url,
         )
 
     def _format_graph_section(self, graph_data: dict[str, Any]) -> str:
@@ -83,28 +80,47 @@ class HybridChatbotService:
         vector_section: str,
         token_counter: dict,
     ) -> str:
+        import time
+        # Ограничиваем размер контекста чтобы не превышать лимиты
+        graph_section = graph_section[:8000]
+        vector_section = vector_section[:15000]
         system_prompt = HYBRID_ANSWER_PROMPT.format(
             graph_section=graph_section,
             vector_section=vector_section,
         )
-        response = client.chat.completions.create(
-            model=f"gpt://{settings.yandex_cloud_folder}/{settings.yandex_cloud_model}",
-            temperature=0.3,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question},
-            ],
-            max_tokens=2000,
-        )
-        if hasattr(response, "usage") and response.usage:
-            token_counter["prompt"] = token_counter.get("prompt", 0) + (response.usage.prompt_tokens or 0)
-            token_counter["completion"] = token_counter.get("completion", 0) + (response.usage.completion_tokens or 0)
-        return (response.choices[0].message.content or "").strip()
+        for attempt in range(6):
+            try:
+                _create_kwargs: dict = {
+                    "model": settings.routerai_model,
+                    "temperature": 0.3,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"/no_think {question}" if "qwen" in settings.routerai_model.lower() else question},
+                    ],
+                    "max_tokens": 2000,
+                }
+                if "qwen" in settings.routerai_model.lower():
+                    _create_kwargs["extra_body"] = {"enable_thinking": False}
+                response = client.chat.completions.create(**_create_kwargs)
+                if hasattr(response, "usage") and response.usage:
+                    token_counter["prompt"] = token_counter.get("prompt", 0) + (response.usage.prompt_tokens or 0)
+                    token_counter["completion"] = token_counter.get("completion", 0) + (response.usage.completion_tokens or 0)
+                text = response.choices[0].message.content or ""
+                if not text:
+                    text = getattr(response.choices[0].message, "reasoning_content", None) or ""
+                return text.strip()
+            except openai.RateLimitError:
+                wait = 5 * (2 ** attempt)
+                logger.warning("OpenRouter 429 (hybrid answer) — waiting %ds", wait)
+                time.sleep(wait)
+        return ""
 
     async def ask(
         self,
         question: str,
         conversation_id: str | None = None,
+        history: list[dict] | None = None,
+        doc_filter: list[str] | None = None,
     ) -> dict[str, Any]:
         from app.service.chatbot_service import graph_qa_service
         from app.service.rag_chatbot_service import rag_chatbot_service
@@ -133,6 +149,18 @@ class HybridChatbotService:
             graph_section = self._format_graph_section(graph_data)
             vector_section = self._format_vector_section(vector_data)
 
+            filter_text = ""
+            if doc_filter:
+                filter_text = f"[ФИЛЬТР] Отвечай ТОЛЬКО на основе документов с идентификаторами: {', '.join(doc_filter)}. Игнорируй информацию из других документов.\n\n"
+
+            history_text = ""
+            if history:
+                lines = ["[ИСТОРИЯ ДИАЛОГА]"]
+                for msg in history[-6:]:  # последние 3 обмена
+                    role = "Пользователь" if msg["role"] == "user" else "Ассистент"
+                    lines.append(f"{role}: {msg['content'][:500]}")
+                history_text = "\n".join(lines) + "\n\n"
+
             token_counter: dict = {"prompt": 0, "completion": 0}
             client = self._get_openai_client()
             loop = asyncio.get_event_loop()
@@ -142,7 +170,7 @@ class HybridChatbotService:
                 self._generate_hybrid_answer,
                 client,
                 question,
-                graph_section,
+                filter_text + history_text + graph_section,
                 vector_section,
                 token_counter,
             )

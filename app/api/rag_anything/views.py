@@ -20,7 +20,7 @@ async def process_folder(
     data: ProcessRequest,
     current_user: Annotated[User, Depends(get_current_active_user)],
 ):
-    task_id = await rag_anything_service.start_processing(data.folder_id)
+    task_id = await rag_anything_service.start_processing(data.folder_id, use_vision=data.use_vision)
     return ProcessResponse(task_id=task_id)
 
 

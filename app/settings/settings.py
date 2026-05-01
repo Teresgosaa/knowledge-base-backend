@@ -99,6 +99,16 @@ class Settings(BaseSettings):
 
     verify_ssl: bool = True
 
+    groq_api_key: str = ""
+    groq_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+    openrouter_api_key: str = ""
+    openrouter_model: str = "google/gemini-2.0-flash-001"
+
+    routerai_api_key: str = ""
+    routerai_base_url: str = "https://routerai.ru/api/v1"
+    routerai_model: str = "anthropic/claude-sonnet-4.5"
+
 
 settings = Settings()  # type: ignore
 

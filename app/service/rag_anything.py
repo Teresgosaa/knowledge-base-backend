@@ -34,11 +34,12 @@ from app.db.folder import Folder
 from app.db.kb_file import KBFile
 from app.service.layered_graph.builder import LayeredGraphBuilder
 from app.service.node_config import get_entity_type_keys
+from app.service.pptx_preprocessor import extract_pptx_to_markdown, render_slides_to_images
 from app.settings.settings import settings
 
 RAG_WORKING_DIR: str = "./raganything_workspace"
 PARSER_OUTPUT_DIR: str = "./output"
-LLM_MAX_OUTPUT_TOKENS = 3000
+LLM_MAX_OUTPUT_TOKENS = 8000
 MAX_CONCURRENT_FILES = 10
 
 logging.basicConfig(
@@ -181,58 +182,94 @@ class RAGAnythingService:
         return token
 
     def _make_llm_func(self, iam_token: str, token_counter: Optional[Dict] = None) -> Callable:
+        semaphore = asyncio.Semaphore(1)
+
         async def llm_model_func(
             prompt: str,
             system_prompt: Optional[str] = None,
             history_messages: Optional[list] = None,
+            image_data: Optional[str] = None,
             **kwargs,
         ) -> str:
-            try:
-                loop = asyncio.get_event_loop()
+            async with semaphore:
+                try:
+                    import time
+                    loop = asyncio.get_event_loop()
 
-                def _call() -> str:
-                    messages = []
-                    if system_prompt:
-                        messages.append({"role": "system", "content": system_prompt})
-                    messages.append({"role": "user", "content": prompt})
-                    llm_folder = settings.yandex_cloud_folder
-                    client = openai.OpenAI(
-                        api_key="ignored",
-                        base_url="https://ai.api.cloud.yandex.net/v1",
-                        default_headers={
-                            "Authorization": f"Api-Key {settings.yandex_cloud_api_key}",
-                            "x-folder-id": llm_folder,
-                        },
-                    )
-                    response = client.chat.completions.create(
-                        model=f"gpt://{llm_folder}/{settings.yandex_cloud_model}",
-                        messages=messages,
-                        temperature=0.3,
-                        max_tokens=LLM_MAX_OUTPUT_TOKENS,
-                    )
-                    text = response.choices[0].message.content or ""
-                    if not text:
-                        logger.warning(
-                            "LLM chat.completions empty response: %s",
-                            response.model_dump() if hasattr(response, "model_dump") else str(response),
-                        )
-                    if hasattr(response, "usage") and response.usage:
-                        u = response.usage
-                        logger.info(
-                            "LLM tokens — prompt: %d, completion: %d, total: %d",
-                            u.prompt_tokens,
-                            u.completion_tokens,
-                            u.total_tokens,
-                        )
-                        if token_counter is not None:
-                            token_counter["prompt"] = token_counter.get("prompt", 0) + (u.prompt_tokens or 0)
-                            token_counter["completion"] = token_counter.get("completion", 0) + (u.completion_tokens or 0)
-                    return text
+                    def _call() -> str:
+                        messages = []
+                        if system_prompt:
+                            messages.append({"role": "system", "content": system_prompt})
 
-                return await loop.run_in_executor(None, _call)
-            except Exception as exc:
-                logger.error("Error calling Yandex Cloud LLM: %s", exc)
-                return ""
+                        if image_data:
+                            messages.append({
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:image/png;base64,{image_data}"},
+                                    },
+                                    {"type": "text", "text": prompt},
+                                ],
+                            })
+                        else:
+                            messages.append({"role": "user", "content": prompt})
+
+                        client = openai.OpenAI(
+                            api_key=settings.routerai_api_key,
+                            base_url=settings.routerai_base_url,
+                        )
+                        for attempt in range(6):
+                            try:
+                                _create_kwargs: dict = {
+                                    "model": settings.routerai_model,
+                                    "messages": messages,
+                                    "temperature": 0.3,
+                                    "max_tokens": LLM_MAX_OUTPUT_TOKENS,
+                                }
+                                if "qwen" in settings.routerai_model.lower():
+                                    _create_kwargs["extra_body"] = {"enable_thinking": False}
+                                response = client.chat.completions.create(**_create_kwargs)
+                                text = response.choices[0].message.content or ""
+                                if not text:
+                                    text = getattr(response.choices[0].message, "reasoning_content", None) or ""
+                                if hasattr(response, "usage") and response.usage:
+                                    u = response.usage
+                                    logger.info(
+                                        "LLM tokens — prompt: %d, completion: %d, total: %d",
+                                        u.prompt_tokens,
+                                        u.completion_tokens,
+                                        u.total_tokens,
+                                    )
+                                    if token_counter is not None:
+                                        token_counter["prompt"] = token_counter.get("prompt", 0) + (u.prompt_tokens or 0)
+                                        token_counter["completion"] = token_counter.get("completion", 0) + (u.completion_tokens or 0)
+                                # Для vision-запросов оборачиваем ответ в JSON-формат RAGAnything
+                                if image_data and text:
+                                    import json as _json
+                                    short = text[:200].replace('"', "'")
+                                    # Ограничиваем длину чтобы не превышать лимит Yandex embedding (~2048 токенов)
+                                    detailed = text[:1000].replace('"', "'")
+                                    text = _json.dumps({
+                                        "entity_name": "slide_image",
+                                        "entity_type": "image",
+                                        "summary": short,
+                                        "detailed_description": detailed,
+                                    }, ensure_ascii=False)
+                                return text
+                            except openai.RateLimitError:
+                                wait = 5 * (2 ** attempt)
+                                logger.warning("RouterAI 429 — waiting %ds (attempt %d/6)", wait, attempt + 1)
+                                time.sleep(wait)
+                        return ""
+
+                    result = await loop.run_in_executor(None, _call)
+                    if image_data and result:
+                        await asyncio.sleep(4)
+                    return result
+                except Exception as exc:
+                    logger.error("Error calling OpenRouter LLM: %s", exc)
+                    return ""
 
         return llm_model_func
 
@@ -428,6 +465,9 @@ class RAGAnythingService:
                     await rag.finalize_storages()
                     raise
 
+                task["status"] = "building_layered_graph"
+                layered_results = await self._build_layered_graphs(local_agreements, llm_func)
+
                 total_tokens = token_counter["prompt"] + token_counter["completion"]
                 logger.info(
                     "Indexing complete — total LLM tokens: prompt=%d, completion=%d, total=%d",
@@ -441,6 +481,7 @@ class RAGAnythingService:
                     "status": "success",
                     "s3_prefix": s3_prefix,
                     "agreements": processing_results,
+                    "layered_graph": layered_results,
                     "tokens": {
                         "prompt": token_counter["prompt"],
                         "completion": token_counter["completion"],
@@ -586,7 +627,7 @@ class RAGAnythingService:
             parse_method="auto",
             working_dir=RAG_WORKING_DIR,
             parser_output_dir=PARSER_OUTPUT_DIR,
-            enable_image_processing=False,
+            enable_image_processing=True,
             enable_table_processing=True,
             enable_equation_processing=False,
             use_full_path=False,
@@ -607,10 +648,12 @@ class RAGAnythingService:
         rag = RAGAnything(
             lightrag=lightrag_instance,
             config=config,
+            vision_model_func=llm_func,
         )
 
         logger.info(
-            "RAGAnything created (parser=docling, graph_storage=Neo4JStorage, working_dir=%s)",
+            "RAGAnything created (parser=docling, vision=RouterAI/%s, graph_storage=Neo4JStorage, working_dir=%s)",
+            settings.routerai_model,
             RAG_WORKING_DIR,
         )
         return rag
@@ -619,14 +662,16 @@ class RAGAnythingService:
         self,
         rag: RAGAnything,
         agreements: Dict[str, List[Path]],
+        use_vision: bool = False,
     ) -> Dict[str, Any]:
         results: Dict[str, Any] = {}
 
         for agreement_id, file_paths in agreements.items():
             logger.info(
-                "=== Processing agreement '%s' (%d files) ===",
+                "=== Processing agreement '%s' (%d files) [mode=%s] ===",
                 agreement_id,
                 len(file_paths),
+                "vision" if use_vision else "fast",
             )
             agreement_result: Dict[str, Any] = {
                 "agreement_id": agreement_id,
@@ -635,17 +680,126 @@ class RAGAnythingService:
             }
 
             for file_path in file_paths:
-                file_str = str(file_path)
-                logger.info("  Processing file: %s", file_str)
+                logger.info("  Processing file: %s", file_path.name)
                 try:
                     file_doc_id = file_path.stem.lower().replace(" ", "-").replace("_", "-")
-                    await rag.process_document_complete(
-                        file_path=file_str,
-                        output_dir=PARSER_OUTPUT_DIR,
-                        parse_method="auto",
-                        display_stats=True,
-                        doc_id=file_doc_id,
-                    )
+
+                    if file_path.suffix.lower() in (".ppt", ".pptx"):
+                        md_content = extract_pptx_to_markdown(file_path)
+                        if md_content:
+                            md_path = file_path.with_suffix(".md")
+                            md_path.write_text(md_content, encoding="utf-8")
+
+                        if use_vision:
+                            # Vision режим: рендерим слайды через LibreOffice → отправляем в Qwen
+                            logger.info("  [vision] Rendering slides via LibreOffice: %s", file_path.name)
+                            slide_images = render_slides_to_images(file_path)
+                            if slide_images:
+                                logger.info("  [vision] Got %d slide images, sending to vision model", len(slide_images))
+                                import base64
+                                enriched_lines = [md_content or ""]
+                                for i, img_path in enumerate(slide_images, 1):
+                                    try:
+                                        img_b64 = base64.b64encode(img_path.read_bytes()).decode()
+                                        vision_prompt = (
+                                            f"Это слайд {i} из бизнес-презентации. "
+                                            "Внимательно изучи его визуальную структуру: колонки, разделы, блоки. "
+                                            "Для каждой отдельной секции или колонки укажи точно: "
+                                            "1) заголовок секции (как написано на слайде), "
+                                            "2) все текстовые элементы внутри неё — списки, цифры, подзаголовки. "
+                                            "Сохраняй оригинальные названия заголовков. "
+                                            "Не объединяй содержимое разных секций в один текст."
+                                        )
+                                        llm = rag.lightrag.llm_model_func
+                                        description = await llm(vision_prompt, image_data=img_b64)
+                                        if description:
+                                            enriched_lines.append(f"\n## Описание слайда {i} (vision)\n{description}")
+                                            logger.info("  [vision] Slide %d described (%d chars)", i, len(description))
+                                    except Exception as ve:
+                                        logger.error("  [vision] Failed slide %d: %s", i, ve)
+                                enriched_md = "\n".join(enriched_lines)
+                                await rag.lightrag.ainsert(enriched_md)
+                            else:
+                                logger.warning("  [vision] LibreOffice rendering failed, falling back to fast mode")
+                                if md_content:
+                                    await rag.lightrag.ainsert(md_content)
+                        else:
+                            # Быстрый режим: python-pptx markdown → ainsert
+                            logger.info("  [fast] Inserting structured markdown: %s", file_path.name)
+                            if md_content:
+                                await rag.lightrag.ainsert(md_content)
+                            else:
+                                logger.warning("  Empty markdown for %s, skipping", file_path.name)
+                                agreement_result["files"].append({"file": file_path.name, "status": "error", "error": "Empty markdown"})
+                                continue
+
+                        await _set_doc_id_on_nodes(rag, file_path.name, agreement_id)
+                        agreement_result["files"].append({"file": file_path.name, "status": "success"})
+                        logger.info("  Done: %s", file_path.name)
+                        continue
+
+                    if file_path.suffix.lower() in (".md", ".txt"):
+                        # MD/TXT обходим docling — он не поддерживает эти форматы
+                        logger.info("  [text] Direct insert for %s", file_path.name)
+                        text = file_path.read_text(encoding="utf-8", errors="replace")
+                        if text.strip():
+                            await rag.lightrag.ainsert(text, ids=[file_doc_id])
+                        else:
+                            logger.warning("  Empty file %s, skipping", file_path.name)
+                            agreement_result["files"].append({"file": file_path.name, "status": "error", "error": "Empty file"})
+                            continue
+                        await _set_doc_id_on_nodes(rag, file_path.name, agreement_id)
+                        agreement_result["files"].append({"file": file_path.name, "status": "success"})
+                        logger.info("  Done: %s", file_path.name)
+                        continue
+
+                    if use_vision and file_path.suffix.lower() == ".pdf":
+                        # PDF в vision-режиме: PyMuPDF рендерит страницы → Claude описывает
+                        logger.info("  [pdf-vision] Rendering PDF pages: %s", file_path.name)
+                        from app.service.pptx_preprocessor import render_pdf_to_images
+                        page_images = render_pdf_to_images(file_path)
+                        if page_images:
+                            logger.info("  [pdf-vision] Got %d pages, sending to vision model", len(page_images))
+                            import base64
+                            enriched_lines = []
+                            for i, img_path in enumerate(page_images, 1):
+                                try:
+                                    img_b64 = base64.b64encode(img_path.read_bytes()).decode()
+                                    vision_prompt = (
+                                        f"Это страница {i} из бизнес-презентации. "
+                                        "Внимательно изучи её визуальную структуру: колонки, разделы, блоки. "
+                                        "Для каждой отдельной секции или колонки укажи точно: "
+                                        "1) заголовок секции (как написано на слайде), "
+                                        "2) все текстовые элементы внутри неё — списки, цифры, подзаголовки. "
+                                        "Сохраняй оригинальные названия заголовков. "
+                                        "Не объединяй содержимое разных секций в один текст."
+                                    )
+                                    llm = rag.lightrag.llm_model_func
+                                    description = await llm(vision_prompt, image_data=img_b64)
+                                    if description:
+                                        enriched_lines.append(f"\n## Страница {i}\n{description}")
+                                        logger.info("  [pdf-vision] Page %d described (%d chars)", i, len(description))
+                                except Exception as ve:
+                                    logger.error("  [pdf-vision] Failed page %d: %s", i, ve)
+                            if enriched_lines:
+                                await rag.lightrag.ainsert("\n".join(enriched_lines))
+                        else:
+                            raise RuntimeError("PyMuPDF could not render PDF pages")
+                    else:
+                        # Стандартный путь через docling
+                        import shutil as _shutil
+                        import uuid as _uuid
+                        _ascii_dir = Path(tempfile.gettempdir()) / f"rag_doc_{_uuid.uuid4().hex[:8]}"
+                        _ascii_dir.mkdir(parents=True, exist_ok=True)
+                        safe_path = _ascii_dir / f"doc_{_uuid.uuid4().hex[:12]}{file_path.suffix}"
+                        _shutil.copy2(str(file_path), str(safe_path))
+                        await rag.process_document_complete(
+                            file_path=str(safe_path),
+                            output_dir=PARSER_OUTPUT_DIR,
+                            parse_method="auto",
+                            display_stats=True,
+                            doc_id=file_doc_id,
+                        )
                     await _set_doc_id_on_nodes(rag, file_path.name, agreement_id)
                     agreement_result["files"].append({"file": file_path.name, "status": "success"})
                     logger.info("  Done: %s", file_path.name)
@@ -685,19 +839,45 @@ class RAGAnythingService:
 
             for file_path in file_paths:
                 try:
+                    is_pptx = file_path.suffix.lower() in (".ppt", ".pptx")
+                    text_path = file_path
+                    if is_pptx:
+                        md_path = file_path.with_suffix(".md")
+                        if md_path.exists():
+                            text_path = md_path
+
                     doc_text = self._layered_graph_builder.get_document_text(
-                        agreement_id, PARSER_OUTPUT_DIR, file_path=str(file_path)
+                        agreement_id, PARSER_OUTPUT_DIR, file_path=str(text_path)
                     )
                     if not doc_text:
-                        if file_path.suffix.lower() in (
-                            ".pdf",
-                            ".doc",
-                            ".docx",
-                            ".ppt",
-                            ".pptx",
-                            ".xls",
-                            ".xlsx",
-                        ):
+                        if is_pptx and text_path.suffix.lower() == ".md" and text_path.exists():
+                            doc_text = text_path.read_text(encoding="utf-8", errors="replace")
+                            logger.info(
+                                "Using pre-processed markdown for layered graph: %s",
+                                text_path.name,
+                            )
+                        elif file_path.suffix.lower() == ".pdf":
+                            # Fallback: извлекаем текст из PDF через pypdf
+                            try:
+                                from pypdf import PdfReader
+                                reader = PdfReader(str(file_path))
+                                pages = [p.extract_text() or "" for p in reader.pages]
+                                doc_text = "\n\n".join(p for p in pages if p.strip())
+                                logger.info("pypdf extracted %d chars from %s", len(doc_text), file_path.name)
+                            except Exception as pdf_exc:
+                                logger.warning("pypdf fallback failed for %s: %s", file_path.name, pdf_exc)
+                                doc_text = ""
+                        elif file_path.suffix.lower() in (".doc", ".docx"):
+                            # Fallback: извлекаем текст из DOCX через python-docx
+                            try:
+                                from docx import Document as DocxDocument
+                                docx = DocxDocument(str(file_path))
+                                doc_text = "\n".join(p.text for p in docx.paragraphs if p.text.strip())
+                                logger.info("python-docx extracted %d chars from %s", len(doc_text), file_path.name)
+                            except Exception as docx_exc:
+                                logger.warning("python-docx fallback failed for %s: %s", file_path.name, docx_exc)
+                                doc_text = ""
+                        elif file_path.suffix.lower() in (".ppt", ".pptx", ".xls", ".xlsx"):
                             logger.warning(
                                 "No parsed text found for %s (doc_id=%s), skipping raw binary read",
                                 file_path.name,
@@ -755,7 +935,7 @@ class RAGAnythingService:
         finally:
             driver.close()
 
-    async def _process(self, task_id: str, folder_id: int) -> None:
+    async def _process(self, task_id: str, folder_id: int, use_vision: bool = False) -> None:
         task = self._tasks[task_id]
         try:
             task["status"] = "fetching_iam_token"
@@ -791,7 +971,7 @@ class RAGAnythingService:
 
                 try:
                     task["status"] = "processing"
-                    processing_results = await self._process_agreements(rag, local_agreements)
+                    processing_results = await self._process_agreements(rag, local_agreements, use_vision=use_vision)
 
                     await rag.finalize_storages()
                 except Exception:
@@ -802,7 +982,7 @@ class RAGAnythingService:
 
                 task["status"] = "building_layered_graph"
                 llm_func = self._make_llm_func(iam_token, token_counter)
-                # layered_results = await self._build_layered_graphs(local_agreements, llm_func)
+                layered_results = await self._build_layered_graphs(local_agreements, llm_func)
 
                 total_tokens = token_counter["prompt"] + token_counter["completion"]
                 logger.info(
@@ -816,7 +996,7 @@ class RAGAnythingService:
                 task["result"] = {
                     "status": "success",
                     "agreements": processing_results,
-                    # "layered_graph": layered_results,
+                    "layered_graph": layered_results,
                     "tokens": {
                         "prompt": token_counter["prompt"],
                         "completion": token_counter["completion"],
@@ -847,14 +1027,15 @@ class RAGAnythingService:
             task["error"] = str(exc)
             logger.exception("RAGAnything processing failed for task %s", task_id)
 
-    async def start_processing(self, folder_id: int) -> str:
+    async def start_processing(self, folder_id: int, use_vision: bool = False) -> str:
         task_id = uuid.uuid4().hex
         self._tasks[task_id] = {
             "task_id": task_id,
             "folder_id": folder_id,
+            "use_vision": use_vision,
             "status": "pending",
         }
-        asyncio.create_task(self._process(task_id, folder_id))
+        asyncio.create_task(self._process(task_id, folder_id, use_vision=use_vision))
         return task_id
 
     def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:

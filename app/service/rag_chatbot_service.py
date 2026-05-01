@@ -14,8 +14,14 @@ logger = logging.getLogger(__name__)
 
 RAG_SYSTEM_PROMPT = (
     "Ты — полезный ассистент, отвечающий на вопросы по документам из базы знаний. "
+    "База знаний содержит презентации, документы, отчёты. "
     "Отвечай на русском языке. Будь точным и по существу. "
-    "Если в контексте недостаточно информации, так и скажи."
+    "Если информация взята из презентации — укажи номер слайда. "
+    "Если в контексте недостаточно информации, так и скажи. "
+    "ВАЖНО: В текстах встречается формат '[X=N%] текст' — это означает что элемент "
+    "расположен на N% от левого края слайда. Элементы с близким значением X% "
+    "находятся в одной колонке или секции слайда. "
+    "Используй это для определения к какой колонке относится каждый элемент."
 )
 
 
@@ -123,29 +129,30 @@ class RAGChatbotService:
                         messages = []
                         if system_prompt:
                             messages.append({"role": "system", "content": system_prompt})
-                        messages.append({"role": "user", "content": prompt})
-                        llm_folder = settings.yandex_cloud_folder
+                        _prompt = f"/no_think {prompt}" if "qwen" in settings.routerai_model.lower() else prompt
+                        messages.append({"role": "user", "content": _prompt})
                         client = openai.OpenAI(
-                            api_key="ignored",
-                            base_url="https://ai.api.cloud.yandex.net/v1",
-                            default_headers={
-                                "Authorization": f"Api-Key {settings.yandex_cloud_api_key}",
-                                "x-folder-id": llm_folder,
-                            },
+                            api_key=settings.routerai_api_key,
+                            base_url=settings.routerai_base_url,
                         )
                         logger.info(
-                            "Yandex LLM call: prompt_len=%d sys_len=%d",
+                            "RouterAI LLM call: prompt_len=%d sys_len=%d",
                             len(prompt),
                             len(system_prompt) if system_prompt else 0,
                         )
-                        response = client.chat.completions.create(
-                            model=f"gpt://{llm_folder}/{settings.yandex_cloud_model}",
-                            messages=messages,
-                            temperature=0.3,
-                            max_tokens=3000,
-                        )
+                        _create_kwargs: dict = {
+                            "model": settings.routerai_model,
+                            "messages": messages,
+                            "temperature": 0.3,
+                            "max_tokens": 3000,
+                        }
+                        if "qwen" in settings.routerai_model.lower():
+                            _create_kwargs["extra_body"] = {"enable_thinking": False}
+                        response = client.chat.completions.create(**_create_kwargs)
                         text = response.choices[0].message.content or ""
-                        logger.info("Yandex LLM response text_len=%d", len(text))
+                        if not text:
+                            text = getattr(response.choices[0].message, "reasoning_content", None) or ""
+                        logger.info("RouterAI LLM response text_len=%d", len(text))
                         if hasattr(response, "usage") and response.usage:
                             self._token_counter["prompt"] = self._token_counter.get("prompt", 0) + (response.usage.prompt_tokens or 0)
                             self._token_counter["completion"] = self._token_counter.get("completion", 0) + (response.usage.completion_tokens or 0)
@@ -153,7 +160,7 @@ class RAGChatbotService:
 
                     return await loop.run_in_executor(None, _call)
                 except Exception as exc:
-                    logger.error("Error calling Yandex Cloud LLM: %s", exc)
+                    logger.error("Error calling RouterAI LLM: %s", exc)
                     return ""
 
             config = RAGAnythingConfig(
@@ -161,7 +168,7 @@ class RAGChatbotService:
                 parse_method="auto",
                 working_dir=RAG_WORKING_DIR,
                 parser_output_dir=PARSER_OUTPUT_DIR,
-                enable_image_processing=False,
+                enable_image_processing=True,
                 enable_table_processing=True,
                 enable_equation_processing=False,
                 use_full_path=False,
@@ -245,6 +252,7 @@ class RAGChatbotService:
         question: str,
         conversation_id: Optional[str] = None,
         mode: str = "mix",
+        history: list[dict] | None = None,
     ) -> dict[str, Any]:
         if not conversation_id:
             conversation_id = uuid.uuid4().hex[:12]
@@ -255,11 +263,21 @@ class RAGChatbotService:
             if not init_result.get("success"):
                 raise RuntimeError(init_result.get("error", "Failed to initialize LightRAG"))
 
+            # Добавляем историю к вопросу если она есть
+            question_with_history = question
+            if history:
+                lines = ["Контекст предыдущего диалога:"]
+                for msg in history[-6:]:
+                    role = "Пользователь" if msg["role"] == "user" else "Ассистент"
+                    lines.append(f"{role}: {msg['content'][:300]}")
+                lines.append(f"\nТекущий вопрос: {question}")
+                question_with_history = "\n".join(lines)
+
             self._token_counter = {"prompt": 0, "completion": 0}
             answer = await rag.aquery(
-                question,
+                question_with_history,
                 mode=mode,
-                # system_prompt=RAG_SYSTEM_PROMPT,
+                system_prompt=RAG_SYSTEM_PROMPT,
             )
 
             total = self._token_counter["prompt"] + self._token_counter["completion"]
