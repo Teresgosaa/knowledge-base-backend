@@ -1,12 +1,19 @@
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
+
+
+class HistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
 
 
 class ChatRequest(BaseModel):
     question: str
     conversation_id: Optional[str] = None
     retrieval_mode: Literal["graph_qa", "rag_anything", "hybrid"] = "hybrid"
+    history: Optional[List[HistoryMessage]] = None
+    filter_folder_id: Optional[int] = None
 
 
 class TokenUsage(BaseModel):

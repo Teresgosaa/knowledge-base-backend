@@ -372,22 +372,36 @@ class LayeredGraphBuilder:
             )
             return None
 
-        user_prompt = user_prompt_template.replace("{input_text}", text[:12000])
-
-        try:
-            response = await llm_func(
-                prompt=user_prompt,
-                system_prompt=system_prompt,
-            )
-            cleaned = response.strip()
-            if cleaned.startswith("```"):
-                cleaned = cleaned.split("\n", 1)[-1]
-            if cleaned.endswith("```"):
-                cleaned = cleaned.rsplit("```", 1)[0]
-            return json.loads(cleaned)
-        except (json.JSONDecodeError, Exception) as exc:
-            logger.error("Failed to extract structured data via LLM: %s", exc)
+        chunk_size = 12000
+        chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)] if text else []
+        if not chunks:
             return None
+
+        merged: Dict[str, Any] = {"document": {}, "clauses": [], "entities": [], "terms": []}
+
+        for idx, chunk in enumerate(chunks):
+            user_prompt = user_prompt_template.replace("{input_text}", chunk)
+            try:
+                response = await llm_func(prompt=user_prompt, system_prompt=system_prompt)
+                cleaned = response.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[-1]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned.rsplit("```", 1)[0]
+                result = json.loads(cleaned)
+                if idx == 0:
+                    merged["document"] = result.get("document", {})
+                merged["clauses"].extend(result.get("clauses", []))
+                merged["entities"].extend(result.get("entities", []))
+                merged["terms"].extend(result.get("terms", []))
+                logger.info("Chunk %d/%d extracted: %d clauses, %d entities",
+                            idx + 1, len(chunks),
+                            len(result.get("clauses", [])),
+                            len(result.get("entities", [])))
+            except (json.JSONDecodeError, Exception) as exc:
+                logger.error("Failed to extract chunk %d via LLM: %s", idx + 1, exc)
+
+        return merged if (merged["clauses"] or merged["entities"]) else None
 
     def _write_extraction_to_graph(
         self,
@@ -569,8 +583,8 @@ class LayeredGraphBuilder:
 
                 node_type = _get_node_type_by_node_name(entity_type_raw)
                 if node_type is None:
-                    logger.warning("Unknown entity type: %s", entity_type_raw)
-                    continue
+                    node_type = entity_type_raw.strip().replace(" ", "_") or "Other"
+                    logger.debug("Unknown entity type '%s', using as-is", entity_type_raw)
 
                 entity_uid = _generate_uid(node_type, doc_id, entity_name, str(i))
                 clause_id_ref = entity.get("clause_id", "")

@@ -18,6 +18,7 @@ workflow/
 # deploy scripts
 *.sh
 .env*
+!.env.example
 
 # folders
 secure/

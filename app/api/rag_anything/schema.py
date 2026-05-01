@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class ProcessRequest(BaseModel):
     folder_id: int = Field(..., description="ID of the root folder to process")
+    use_vision: bool = Field(default=False, description="Use docling + vision model (slow but processes images)")
 
 
 class ProcessFromS3Request(BaseModel):
