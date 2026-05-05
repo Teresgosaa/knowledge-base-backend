@@ -344,6 +344,11 @@ Rules:
    Remember: entity_type values have NO spaces.
 10. Use LIMIT to cap results at 50.
 11. NEVER return a sentinel like "No data found". Always generate a MATCH query — even if unsure, try the most likely match.
+12. AVOID UNION. Use OPTIONAL MATCH instead to combine results in one query.
+    If you must use UNION, BOTH parts MUST return EXACTLY the same column aliases — otherwise it is a syntax error in Cypher.
+    WRONG: MATCH (a) RETURN a.name AS name UNION MATCH (b) RETURN b.entity_id AS id
+    RIGHT: MATCH (a) RETURN a.name AS name UNION MATCH (b) RETURN b.entity_id AS name
+13. NEVER write SQL syntax (SELECT, FROM as top-level keywords). This is Cypher, not SQL.
 """
 
 CYPHER_FALLBACK_PROMPT = """You are a Neo4j Cypher query expert. The first attempt query returned empty or null results. Generate a SIMPLER fallback query.

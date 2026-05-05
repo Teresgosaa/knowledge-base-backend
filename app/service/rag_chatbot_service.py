@@ -30,6 +30,7 @@ class RAGChatbotService:
         self._rag: Any = None
         self._initializing = False
         self._token_counter: dict = {"prompt": 0, "completion": 0}
+        self._embedding_func: Any = None
 
     async def _ensure_rag(self) -> Any:
         if self._rag is not None:
@@ -147,7 +148,7 @@ class RAGChatbotService:
                             "max_tokens": 3000,
                         }
                         if "qwen" in settings.routerai_model.lower():
-                            _create_kwargs["extra_body"] = {"enable_thinking": False}
+                            _create_kwargs["extra_body"] = {"reasoning_effort": "low"}
                         response = client.chat.completions.create(**_create_kwargs)
                         text = response.choices[0].message.content or ""
                         if not text:
@@ -216,6 +217,7 @@ class RAGChatbotService:
             )
 
             self._rag = rag
+            self._embedding_func = embedding_func
             logger.info("RAGChatbotService: RAGAnything initialized for querying")
             return self._rag
         except Exception as exc:
@@ -224,7 +226,7 @@ class RAGChatbotService:
         finally:
             self._initializing = False
 
-    async def retrieve(self, question: str) -> dict[str, Any]:
+    async def retrieve(self, question: str, doc_filter: list[str] | None = None) -> dict[str, Any]:
         """Retrieve relevant context from vector store without generating a final answer."""
         try:
             rag = await self._ensure_rag()
@@ -233,7 +235,12 @@ class RAGChatbotService:
                 raise RuntimeError(init_result.get("error", "Failed to initialize LightRAG"))
 
             self._token_counter = {"prompt": 0, "completion": 0}
-            context = await rag.aquery(question, mode="mix")
+
+            if doc_filter and self._embedding_func:
+                # Прямой поиск в Qdrant с фильтром по full_doc_id
+                context = await self._retrieve_filtered(question, doc_filter)
+            else:
+                context = await rag.aquery(question, mode="mix")
 
             return {
                 "success": True,
@@ -246,6 +253,44 @@ class RAGChatbotService:
         except Exception as exc:
             logger.error("RAG retrieve error: %s", exc)
             return {"success": False, "error": str(exc), "context": "", "tokens": {"prompt": 0, "completion": 0}}
+
+    async def _retrieve_filtered(self, question: str, doc_filter: list[str]) -> str:
+        """Поиск в Qdrant с фильтром по full_doc_id."""
+        try:
+            import numpy as np
+            from qdrant_client import QdrantClient
+            from qdrant_client.models import FieldCondition, Filter, MatchAny
+
+            loop = asyncio.get_event_loop()
+            embeddings = await self._embedding_func([question])
+            query_vector = embeddings[0].tolist()
+
+            client = QdrantClient(url=settings.qdrant_uri)
+            collection = "lightrag_vdb_chunks_yandex_text_search_doc_256d"
+
+            qdrant_filter = Filter(
+                must=[FieldCondition(key="full_doc_id", match=MatchAny(any=doc_filter))]
+            )
+
+            results = await loop.run_in_executor(
+                None,
+                lambda: client.query_points(
+                    collection_name=collection,
+                    query=query_vector,
+                    query_filter=qdrant_filter,
+                    limit=20,
+                    with_payload=True,
+                )
+            )
+
+            chunks = [p.payload.get("content", "") for p in results.points if p.payload.get("content")]
+            context = "\n\n".join(chunks)
+            logger.info("Filtered Qdrant search: %d chunks from doc_filter=%s", len(chunks), doc_filter)
+            return context
+        except Exception as exc:
+            logger.error("Filtered Qdrant search failed: %s, falling back to unfiltered", exc)
+            rag = self._rag
+            return await rag.aquery(question, mode="mix")
 
     async def ask(
         self,
