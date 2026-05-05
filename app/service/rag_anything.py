@@ -228,7 +228,7 @@ class RAGAnythingService:
                                     "max_tokens": LLM_MAX_OUTPUT_TOKENS,
                                 }
                                 if "qwen" in settings.routerai_model.lower():
-                                    _create_kwargs["extra_body"] = {"enable_thinking": False}
+                                    _create_kwargs["extra_body"] = {"reasoning_effort": "low"}
                                 response = client.chat.completions.create(**_create_kwargs)
                                 text = response.choices[0].message.content or ""
                                 if not text:
@@ -247,9 +247,9 @@ class RAGAnythingService:
                                 # Для vision-запросов оборачиваем ответ в JSON-формат RAGAnything
                                 if image_data and text:
                                     import json as _json
-                                    short = text[:200].replace('"', "'")
-                                    # Ограничиваем длину чтобы не превышать лимит Yandex embedding (~2048 токенов)
-                                    detailed = text[:1000].replace('"', "'")
+                                    short = text[:500].replace('"', "'")
+                                    # Yandex embedding limit ~2048 tokens ≈ 8000 chars — используем 4000
+                                    detailed = text[:4000].replace('"', "'")
                                     text = _json.dumps({
                                         "entity_name": "slide_image",
                                         "entity_type": "image",
@@ -703,12 +703,15 @@ class RAGAnythingService:
                                         img_b64 = base64.b64encode(img_path.read_bytes()).decode()
                                         vision_prompt = (
                                             f"Это слайд {i} из бизнес-презентации. "
-                                            "Внимательно изучи его визуальную структуру: колонки, разделы, блоки. "
-                                            "Для каждой отдельной секции или колонки укажи точно: "
-                                            "1) заголовок секции (как написано на слайде), "
-                                            "2) все текстовые элементы внутри неё — списки, цифры, подзаголовки. "
-                                            "Сохраняй оригинальные названия заголовков. "
-                                            "Не объединяй содержимое разных секций в один текст."
+                                            "Извлеки ВЕСЬ текст со слайда дословно, без пропусков. "
+                                            "Правила:\n"
+                                            "1. Заголовок слайда — выведи полностью.\n"
+                                            "2. Если есть таблица — выведи ВСЕ строки и столбцы в формате: "
+                                            "Столбец1 | Столбец2 | Столбец3. Не пропускай ни одной строки таблицы.\n"
+                                            "3. Если есть списки или блоки — выведи каждый пункт отдельно, "
+                                            "сохраняя принадлежность к секции.\n"
+                                            "4. Сохраняй оригинальные формулировки — не перефразируй.\n"
+                                            "5. Не объединяй содержимое разных секций."
                                         )
                                         llm = rag.lightrag.llm_model_func
                                         description = await llm(vision_prompt, image_data=img_b64)
@@ -718,16 +721,16 @@ class RAGAnythingService:
                                     except Exception as ve:
                                         logger.error("  [vision] Failed slide %d: %s", i, ve)
                                 enriched_md = "\n".join(enriched_lines)
-                                await rag.lightrag.ainsert(enriched_md)
+                                await rag.lightrag.ainsert(enriched_md, ids=[agreement_id])
                             else:
                                 logger.warning("  [vision] LibreOffice rendering failed, falling back to fast mode")
                                 if md_content:
-                                    await rag.lightrag.ainsert(md_content)
+                                    await rag.lightrag.ainsert(md_content, ids=[agreement_id])
                         else:
                             # Быстрый режим: python-pptx markdown → ainsert
                             logger.info("  [fast] Inserting structured markdown: %s", file_path.name)
                             if md_content:
-                                await rag.lightrag.ainsert(md_content)
+                                await rag.lightrag.ainsert(md_content, ids=[agreement_id])
                             else:
                                 logger.warning("  Empty markdown for %s, skipping", file_path.name)
                                 agreement_result["files"].append({"file": file_path.name, "status": "error", "error": "Empty markdown"})
@@ -743,7 +746,7 @@ class RAGAnythingService:
                         logger.info("  [text] Direct insert for %s", file_path.name)
                         text = file_path.read_text(encoding="utf-8", errors="replace")
                         if text.strip():
-                            await rag.lightrag.ainsert(text, ids=[file_doc_id])
+                            await rag.lightrag.ainsert(text, ids=[agreement_id])
                         else:
                             logger.warning("  Empty file %s, skipping", file_path.name)
                             agreement_result["files"].append({"file": file_path.name, "status": "error", "error": "Empty file"})
@@ -767,12 +770,15 @@ class RAGAnythingService:
                                     img_b64 = base64.b64encode(img_path.read_bytes()).decode()
                                     vision_prompt = (
                                         f"Это страница {i} из бизнес-презентации. "
-                                        "Внимательно изучи её визуальную структуру: колонки, разделы, блоки. "
-                                        "Для каждой отдельной секции или колонки укажи точно: "
-                                        "1) заголовок секции (как написано на слайде), "
-                                        "2) все текстовые элементы внутри неё — списки, цифры, подзаголовки. "
-                                        "Сохраняй оригинальные названия заголовков. "
-                                        "Не объединяй содержимое разных секций в один текст."
+                                        "Извлеки ВЕСЬ текст со страницы дословно, без пропусков. "
+                                        "Правила:\n"
+                                        "1. Заголовок страницы — выведи полностью.\n"
+                                        "2. Если есть таблица — выведи ВСЕ строки и столбцы в формате: "
+                                        "Столбец1 | Столбец2 | Столбец3. Не пропускай ни одной строки таблицы.\n"
+                                        "3. Если есть списки или блоки — выведи каждый пункт отдельно, "
+                                        "сохраняя принадлежность к секции.\n"
+                                        "4. Сохраняй оригинальные формулировки — не перефразируй.\n"
+                                        "5. Не объединяй содержимое разных секций."
                                     )
                                     llm = rag.lightrag.llm_model_func
                                     description = await llm(vision_prompt, image_data=img_b64)
@@ -782,7 +788,7 @@ class RAGAnythingService:
                                 except Exception as ve:
                                     logger.error("  [pdf-vision] Failed page %d: %s", i, ve)
                             if enriched_lines:
-                                await rag.lightrag.ainsert("\n".join(enriched_lines))
+                                await rag.lightrag.ainsert("\n".join(enriched_lines), ids=[agreement_id])
                         else:
                             raise RuntimeError("PyMuPDF could not render PDF pages")
                     else:
@@ -798,7 +804,7 @@ class RAGAnythingService:
                             output_dir=PARSER_OUTPUT_DIR,
                             parse_method="auto",
                             display_stats=True,
-                            doc_id=file_doc_id,
+                            doc_id=agreement_id,
                         )
                     await _set_doc_id_on_nodes(rag, file_path.name, agreement_id)
                     agreement_result["files"].append({"file": file_path.name, "status": "success"})

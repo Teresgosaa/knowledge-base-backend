@@ -100,7 +100,7 @@ class HybridChatbotService:
                     "max_tokens": 2000,
                 }
                 if "qwen" in settings.routerai_model.lower():
-                    _create_kwargs["extra_body"] = {"enable_thinking": False}
+                    _create_kwargs["extra_body"] = {"reasoning_effort": "low"}
                 response = client.chat.completions.create(**_create_kwargs)
                 if hasattr(response, "usage") and response.usage:
                     token_counter["prompt"] = token_counter.get("prompt", 0) + (response.usage.prompt_tokens or 0)
@@ -131,8 +131,17 @@ class HybridChatbotService:
         try:
             logger.info("Hybrid.ask() started: %s", question[:80])
 
-            graph_task = asyncio.create_task(graph_qa_service.retrieve(question))
-            vector_task = asyncio.create_task(rag_chatbot_service.retrieve(question))
+            _GRAPH_TIMEOUT = 45  # секунд — если граф не ответил, переходим на vector only
+
+            async def _graph_with_timeout():
+                try:
+                    return await asyncio.wait_for(graph_qa_service.retrieve(question), timeout=_GRAPH_TIMEOUT)
+                except asyncio.TimeoutError:
+                    logger.warning("Graph retrieval timed out after %ds, using vector only", _GRAPH_TIMEOUT)
+                    return {"success": False, "error": "timeout", "results": [], "cypher": None, "tokens": {"prompt": 0, "completion": 0}}
+
+            graph_task = asyncio.create_task(_graph_with_timeout())
+            vector_task = asyncio.create_task(rag_chatbot_service.retrieve(question, doc_filter=doc_filter or None))
 
             graph_data, vector_data = await asyncio.gather(
                 graph_task, vector_task, return_exceptions=True
