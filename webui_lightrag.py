@@ -8,12 +8,12 @@ os.environ["PYTHONHTTPSVERIFY"] = "0"
 import requests
 
 # ── Yandex Cloud credentials ──────────────────────────────────────────────────
-YANDEX_FOLDER = "b1gi8sjb7ua7mbeg9iii"
-YANDEX_API_KEY = "AQVNxbWt-XFNl57U9wYNKMCYE57D2XsHvs4XYdwT"
+YANDEX_FOLDER = os.environ.get("YANDEX_CLOUD_FOLDER", "")
+YANDEX_API_KEY = os.environ.get("YANDEX_CLOUD_API_KEY", "")
 YANDEX_MODEL = "yandexgpt/latest"
-YANDEX_OAUTH = "y0__xD71LilqveAAhjB3RMglej8jRd1fvPDoUa8PBNdS8eBGTHFecljbw"
+YANDEX_OAUTH = os.environ.get("YANDEX_CLOUD_OAUTH_TOKEN", "")
 
-WORKING_DIR = r"C:\Users\anastasia.glazunova\Downloads\knowledge-base-backend\knowledge-base-backend\raganything_workspace"
+WORKING_DIR = os.environ.get("LIGHTRAG_WORKING_DIR", "./raganything_workspace")
 
 
 def fetch_iam_token() -> str:
